@@ -1,7 +1,8 @@
 [project]
 name = "pycyto"
 version = "0.1.0"
-description = "Add your description here"
+description = "Python utilities used by cyto"
+license = "MIT"
 readme = "README.md"
 authors = [
     { name = "Noam Teyssier", email = "22600644+noamteyssier@users.noreply.github.com" },
