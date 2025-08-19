@@ -108,7 +108,7 @@ def determine_cyto_runs(sample_sheet: pl.DataFrame) -> pl.DataFrame:
     Returns:
         A dataframe containing the expected cyto run names.
     """
-    return sample_sheet.select(["name", "mode", "lane"]).unique().with_columns(
+    return sample_sheet.select(["name", "mode", "lane", "features"]).unique().with_columns(
         (
             pl.col("name")
             + "__" + pl.col("mode")
