@@ -2,7 +2,8 @@ import json
 import polars as pl
 
 KNOWN_LIBMODES = ["gex", "crispr", "ab"]
-KNOWN_BARCODES = [f"{name}0{i:02d}" for i in range(1, 17) for name in ["BC", "CR", "AB"]]
+KNOWN_PROBE_SET = ["BC", "CR", "AB"]
+KNOWN_BARCODES = [f"{name}0{i:02d}" for i in range(1, 17) for name in KNOWN_PROBE_SET]
 EXPECTED_KEYS = [
     "name",
     "subname",
@@ -71,6 +72,16 @@ def _parse_barcodes(entry: dict, nlib: int) -> list[list[str]]:
             _validate_component_barcode(component)
     return pairings
 
+def _assign_probeset(barcode: str) -> str:
+    if barcode.startswith("BC"):
+        return "BC"
+    elif barcode.startswith("CR"):
+        return "CR"
+    elif barcode.startswith("AB"):
+        return "AB"
+    else:
+        raise ValueError(f"Invalid barcode format: {barcode}")
+
 def parse_config(config_path: str):
     """Parse and validate a configuration json file."""
     with open(config_path, "r") as f:
@@ -95,6 +106,7 @@ def parse_config(config_path: str):
                         "bc_component": bc_component,
                         "bc_idx": bc_idx,
                         "features": mode_feature,
+                        "probe_set": _assign_probeset(bc_component)
                     })
 
     return pl.DataFrame(dataframe)
@@ -108,7 +120,7 @@ def determine_cyto_runs(sample_sheet: pl.DataFrame) -> pl.DataFrame:
     Returns:
         A dataframe containing the expected cyto run names.
     """
-    return sample_sheet.select(["name", "mode", "lane", "features"]).unique().with_columns(
+    return sample_sheet.select(["name", "mode", "lane", "features", "probe_set"]).unique().with_columns(
         (
             pl.col("name")
             + "__" + pl.col("mode")
