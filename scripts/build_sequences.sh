@@ -7,6 +7,17 @@ NUM_READS=10000;
 COMPRESSION=zst
 OUTDIR="./sequences"
 
+if [ ! -d "$OUTDIR" ]; then
+    mkdir -p "$OUTDIR"
+fi
+
+# check if nucgen is installed and install if not
+if ! command -v nucgen &> /dev/null; then
+    echo "`nucgen` could not be found"
+    cargo install nucgen
+    exit 1
+fi
+
 for lane in $(seq 1 $NUM_LANES); do
     for sample in $(seq 1 $NUM_SAMPLES); do
         for run in $(seq 1 $NUM_RUNS); do
