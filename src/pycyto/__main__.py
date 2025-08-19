@@ -30,18 +30,10 @@ def pipeline(
     config_path: Annotated[str, typer.Argument(help="Path to pipeline configuration json")]
 ):
     """Run a cyto pipeline over a collection of input files with sub-sample specification"""
-    import polars as pl
-    from .config import parse_config
+    from .config import parse_config, determine_cyto_runs
 
     sample_sheet = parse_config(config_path)
-
-    cyto_runs = sample_sheet.select(["name", "mode", "lane"]).unique().with_columns(
-        (
-            pl.col("name")
-            + "__W" + pl.col("lane").cast(pl.String)
-            + "__" + pl.col("mode")
-        ).alias("expected_prefix")
-    )
+    cyto_runs = determine_cyto_runs(sample_sheet)
 
     print(sample_sheet)
     print(cyto_runs)

@@ -4,20 +4,23 @@
     "subname": "sample_a",
     "libmode": "gex",
     "lanes": "1|2|3",
-    "barcodes": "BC001|BC002"
+    "barcodes": "BC001|BC002",
+    "features": "GEX_PROBE_LIST"
   },
   {
     "name": "S1",
     "subname": "sample_b",
     "libmode": "gex+crispr",
     "lanes": "1",
-    "barcodes": "BC001+CR001|BC002+CR002"
+    "barcodes": "BC001+CR001|BC002+CR002",
+    "features": "GEX_PROBE_LIST+CRISPR_PROBE_LIST"
   },
   {
     "name": "S2",
     "subname": "sample_a",
     "libmode": "gex+crispr",
     "lanes": "1|3|5",
-    "barcodes": "BC001+BC001|BC002+BC002|BC003+BC003"
+    "barcodes": "BC001+BC001|BC002+BC002|BC003+BC003",
+    "features": "GEX_PROBE_LIST+CRISPR_PROBE_LIST"
   }
 ]
