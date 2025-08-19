@@ -25,18 +25,26 @@ def convert(
     )
     adata.write(output, compression="gzip" if compress else None)
 
+
 @app.command()
 def pipeline(
-    config_path: Annotated[str, typer.Argument(help="Path to pipeline configuration json")]
+    config_path: Annotated[
+        str, typer.Argument(help="Path to pipeline configuration json")
+    ],
+    sequences_dir: Annotated[
+        str,
+        typer.Argument(
+            help="Path to directory containing sequence files (compressed FASTQ or BQ/VBQ"
+        ),
+    ],
 ):
     """Run a cyto pipeline over a collection of input files with sub-sample specification"""
     from .config import parse_config, determine_cyto_runs
+    from .pipeline import initialize_pipeline
 
     sample_sheet = parse_config(config_path)
     cyto_runs = determine_cyto_runs(sample_sheet)
-
-    print(sample_sheet)
-    print(cyto_runs)
+    initialize_pipeline(cyto_runs, sequences_dir)
 
 
 @app.command()

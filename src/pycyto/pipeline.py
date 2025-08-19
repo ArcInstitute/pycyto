@@ -1,0 +1,91 @@
+import os
+import polars as pl
+from importlib import resources
+import shutil
+from glob import glob
+import re
+
+CYTO_HOME = os.path.join(os.environ["HOME"], ".cyto")
+WHITELIST_PATH = os.path.join(CYTO_HOME, "737K-fixed-rna-profiling.txt.gz")
+PROBE_SETS = [
+    "probe-barcodes-fixed-rna-profiling-rna.txt",
+    "probe-barcodes-fixed-rna-profiling-crispr.txt",
+    "probe-barcodes-fixed-rna-profiling-ab.txt",
+]
+PROBE_SET_PATHS = [os.path.join(CYTO_HOME, probe_set) for probe_set in PROBE_SETS]
+PROBE_SET_MAP = {"BC": 0, "CR": 1, "AB": 2}
+
+
+def _init_10x_whitelist():
+    if not os.path.exists(WHITELIST_PATH):
+        path = resources.files("pycyto.vendor.barcodes").joinpath(
+            "737K-fixed-rna-profiling.txt.gz"
+        )
+        assert path.is_file(), f"File not found: {path}"
+        shutil.copyfile(path, WHITELIST_PATH)  # type: ignore
+
+
+def _init_probesets():
+    for probe_set, expected_path in zip(PROBE_SETS, PROBE_SET_PATHS):
+        if not os.path.exists(expected_path):
+            path = resources.files("pycyto.vendor.probe-sets").joinpath(probe_set)
+            assert path.is_file(), f"File not found: {path}"
+            shutil.copyfile(path, expected_path)  # type: ignore
+
+
+def _build_homedir():
+    if not os.path.exists(CYTO_HOME):
+        os.makedirs(CYTO_HOME)
+    _init_10x_whitelist()
+    _init_probesets()
+
+
+def _assert_interleaving(sequence_subset: list[str]):
+    def _is_fastx(filepath):
+        return re.match(r"_R[12]*.f*q(.gz|.zst)?$", filepath)
+
+    fastq_subset = [f for f in sequence_subset if _is_fastx(f)]
+    for a, b in zip(fastq_subset[::2], fastq_subset[1::2]):
+        if "_R1" in a and "_R2" in b:
+            continue
+        raise ValueError(
+            f"Fastq files are not interleaved R1,R2: {a}, {b}. Problem in file name encoding."
+        )
+
+
+def initialize_pipeline(cyto_runs: pl.DataFrame, sequences_dir: str):
+    # Build the home directory if it doesn't exist already
+    _build_homedir()
+
+    files = (
+        glob(os.path.join(sequences_dir, "*_R*.f*q*"))
+        + glob(os.path.join(sequences_dir, "*.bq"))
+        + glob(os.path.join(sequences_dir, "*.vbq"))
+    )
+
+    for entry in cyto_runs.to_dicts():
+        probe_set_path = PROBE_SET_PATHS[PROBE_SET_MAP[entry["probe_set"]]]
+
+        sequence_subset = [
+            f for f in files if os.path.basename(f).startswith(entry["expected_prefix"])
+        ]
+        _assert_interleaving(sequence_subset)
+
+        if len(sequence_subset) == 0:
+            raise ValueError(f"No files found for entry {entry}")
+
+        command = [
+            "cyto",
+            "workflow",
+            entry["mode"],
+            "-w",
+            WHITELIST_PATH,
+            "-p",
+            probe_set_path,
+            "-c",
+            entry["feature_path"],
+        ]
+        command.extend(sequence_subset)
+
+        print(command)
+        print("---")
