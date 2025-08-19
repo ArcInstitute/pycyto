@@ -1,5 +1,6 @@
 import json
 import os
+
 import polars as pl
 
 KNOWN_LIBMODES = ["gex", "crispr", "ab"]
@@ -56,7 +57,7 @@ def _parse_gem_lanes(entry: dict) -> list[int]:
 
 
 def _validate_component_barcode(barcode: str):
-    if not barcode in KNOWN_BARCODES:
+    if barcode not in KNOWN_BARCODES:
         raise ValueError(f"Invalid barcode found in barcodes: {barcode}")
 
 

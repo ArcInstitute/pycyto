@@ -1,5 +1,5 @@
-from typing_extensions import Annotated
 import typer
+from typing_extensions import Annotated
 
 app = typer.Typer()
 
@@ -17,7 +17,7 @@ def convert(
     integer: Annotated[bool, typer.Option(help="Convert data to integer")] = False,
 ):
     """Convert an MTX directory into a sparse CSR h5ad file"""
-    from .convert import get_mtx_paths, convert_mtx_to_anndata
+    from .convert import convert_mtx_to_anndata, get_mtx_paths
 
     (mtx_path, feature_path, barcode_path) = get_mtx_paths(path)
     adata = convert_mtx_to_anndata(
@@ -45,9 +45,10 @@ def pipeline(
     ] = 8,
 ):
     """Run a cyto pipeline over a collection of input files with sub-sample specification"""
-    from .config import parse_config, determine_cyto_runs
-    from .pipeline import initialize_pipeline
     import subprocess
+
+    from .config import determine_cyto_runs, parse_config
+    from .pipeline import initialize_pipeline
 
     sample_sheet = parse_config(config_path)
     cyto_runs = determine_cyto_runs(sample_sheet)

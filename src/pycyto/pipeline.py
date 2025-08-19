@@ -1,9 +1,10 @@
 import os
-import polars as pl
-from importlib import resources
+import re
 import shutil
 from glob import glob
-import re
+from importlib import resources
+
+import polars as pl
 
 CYTO_HOME = os.path.join(os.environ["HOME"], ".cyto")
 WHITELIST_PATH = os.path.join(CYTO_HOME, "737K-fixed-rna-profiling.txt.gz")
@@ -116,6 +117,13 @@ def initialize_pipeline(
         ]
         if force:
             command.append("--force")
+        if entry["mode"] == "crispr" and entry["probe_set"] == "CR":
+            command.extend(
+                [
+                    "--offset",
+                    "8",
+                ]
+            )
         command.extend(sequence_subset)
 
         all_commands.append(command)
