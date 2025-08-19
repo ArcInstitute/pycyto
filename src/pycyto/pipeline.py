@@ -53,7 +53,18 @@ def _assert_interleaving(sequence_subset: list[str]):
         )
 
 
-def initialize_pipeline(cyto_runs: pl.DataFrame, sequences_dir: str):
+def initialize_pipeline(
+    cyto_runs: pl.DataFrame, sequences_dir: str, force: bool = False, threads: int = 8
+) -> list[list[str]]:
+    """Initialize the pipeline runner and return all commands.
+
+    Args:
+        cyto_runs (pl.DataFrame): DataFrame containing the cyto runs.
+        sequences_dir (str): Directory containing the sequences.
+
+    Returns:
+        list[list[str]]: List of commands to run.
+    """
     # Build the home directory if it doesn't exist already
     _build_homedir()
 
@@ -63,6 +74,19 @@ def initialize_pipeline(cyto_runs: pl.DataFrame, sequences_dir: str):
         + glob(os.path.join(sequences_dir, "*.vbq"))
     )
 
+    outdir = os.path.join(os.getcwd(), "pycyto_out")
+    if not os.path.exists(outdir):
+        os.makedirs(outdir)
+    else:
+        if force:
+            shutil.rmtree(outdir)
+            os.makedirs(outdir)
+        else:
+            raise ValueError(
+                f"Output directory {outdir} already exists. Use --force to overwrite."
+            )
+
+    all_commands = []
     for entry in cyto_runs.to_dicts():
         probe_set_path = PROBE_SET_PATHS[PROBE_SET_MAP[entry["probe_set"]]]
 
@@ -74,18 +98,26 @@ def initialize_pipeline(cyto_runs: pl.DataFrame, sequences_dir: str):
         if len(sequence_subset) == 0:
             raise ValueError(f"No files found for entry {entry}")
 
+        subdir = os.path.join(outdir, entry["expected_prefix"])
         command = [
             "cyto",
             "workflow",
             entry["mode"],
+            "-T",
+            str(threads),
             "-w",
             WHITELIST_PATH,
             "-p",
             probe_set_path,
             "-c",
             entry["feature_path"],
+            "-o",
+            subdir,
         ]
+        if force:
+            command.append("--force")
         command.extend(sequence_subset)
 
-        print(command)
-        print("---")
+        all_commands.append(command)
+
+    return all_commands

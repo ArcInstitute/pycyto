@@ -37,14 +37,25 @@ def pipeline(
             help="Path to directory containing sequence files (compressed FASTQ or BQ/VBQ"
         ),
     ],
+    force: Annotated[
+        bool, typer.Option(help="Force overwrite of existing output files")
+    ] = False,
+    threads: Annotated[
+        int, typer.Option(help="Number of threads to use for each cyto run")
+    ] = 8,
 ):
     """Run a cyto pipeline over a collection of input files with sub-sample specification"""
     from .config import parse_config, determine_cyto_runs
     from .pipeline import initialize_pipeline
+    import subprocess
 
     sample_sheet = parse_config(config_path)
     cyto_runs = determine_cyto_runs(sample_sheet)
-    initialize_pipeline(cyto_runs, sequences_dir)
+    commands = initialize_pipeline(
+        cyto_runs, sequences_dir, force=force, threads=threads
+    )
+    for command in commands:
+        subprocess.run(command)
 
 
 @app.command()
