@@ -1,7 +1,6 @@
 import os
 import re
 import shutil
-from glob import glob
 from importlib import resources
 
 import polars as pl
@@ -54,6 +53,23 @@ def _assert_interleaving(sequence_subset: list[str]):
         )
 
 
+def _identify_files(dir: str) -> list[str]:
+    # Regex for _R1/_R2 files: .fastq/.fq with optional .gz/.zst compression
+    fastq_pattern = re.compile(r".*_R[12]\.(fastq|fq)(\.gz|\.zst)?$")
+
+    # Regex for .bq/.vbq files
+    bq_pattern = re.compile(r".*\.(bq|vbq)$")
+
+    matched_files = []
+
+    for root, dirs, files in os.walk(dir):
+        for file in files:
+            if fastq_pattern.match(file) or bq_pattern.match(file):
+                matched_files.append(os.path.join(root, file))
+
+    return matched_files
+
+
 def initialize_pipeline(
     cyto_runs: pl.DataFrame, sequences_dir: str, force: bool = False, threads: int = 8
 ) -> list[list[str]]:
@@ -69,11 +85,7 @@ def initialize_pipeline(
     # Build the home directory if it doesn't exist already
     _build_homedir()
 
-    files = (
-        glob(os.path.join(sequences_dir, "*_R*.f*q*"))
-        + glob(os.path.join(sequences_dir, "*.bq"))
-        + glob(os.path.join(sequences_dir, "*.vbq"))
-    )
+    files = _identify_files(sequences_dir)
 
     outdir = os.path.join(os.getcwd(), "pycyto_out")
     if not os.path.exists(outdir):

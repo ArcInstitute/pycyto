@@ -46,6 +46,7 @@ def pipeline(
 ):
     """Run a cyto pipeline over a collection of input files with sub-sample specification"""
     import subprocess
+    import sys
 
     from .config import determine_cyto_runs, parse_config
     from .pipeline import initialize_pipeline
@@ -56,6 +57,7 @@ def pipeline(
         cyto_runs, sequences_dir, force=force, threads=threads
     )
     for command in commands:
+        print(f"{' '.join(command)}", file=sys.stderr)
         subprocess.run(command)
 
 

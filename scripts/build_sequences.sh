@@ -18,11 +18,15 @@ if ! command -v nucgen &> /dev/null; then
     exit 1
 fi
 
+for run in $(seq 1 $NUM_RUNS); do
+    mkdir -p "$OUTDIR/run${run}"
+done;
+
 for lane in $(seq 1 $NUM_LANES); do
     for sample in $(seq 1 $NUM_SAMPLES); do
         for run in $(seq 1 $NUM_RUNS); do
             for mode in GEX CRISPR; do
-                subname=${OUTDIR}/S${sample}_Lane${lane}_${mode}_S${run}
+                subname=${OUTDIR}/run${run}/S${sample}_Lane${lane}_${mode}
                 echo "Generating reads for ${subname}"
                 nucgen -n $NUM_READS ${subname}_R1.fq.${COMPRESSION}
                 nucgen -n $NUM_READS ${subname}_R2.fq.${COMPRESSION}
