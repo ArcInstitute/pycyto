@@ -75,7 +75,7 @@ def aggregate_data(config: pl.DataFrame, cyto_outdir: str, outdir: str):
                     expected_gex_adata_dir = os.path.join(root, "counts")
                     for gex_bc in gex_bcs:
                         expected_gex_adata_path = os.path.join(
-                            expected_gex_adata_dir, f"{gex_bc}.h5ad"
+                            expected_gex_adata_dir, f"{gex_bc}.filt.h5ad"
                         )
 
                         if os.path.exists(expected_gex_adata_path):
