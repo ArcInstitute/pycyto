@@ -62,6 +62,27 @@ def pipeline(
 
 
 @app.command()
+def aggregate(
+    config_path: Annotated[
+        str, typer.Argument(help="Path to aggregation configuration json")
+    ],
+    cyto_outdir: Annotated[
+        str, typer.Argument(help="Path to directory containing cyto output files")
+    ],
+    outdir: Annotated[
+        str, typer.Argument(help="Path to output directory to write aggregated files")
+    ],
+):
+    """Aggregate cyto output files"""
+
+    from .aggregate import aggregate_data
+    from .config import parse_config
+
+    config = parse_config(config_path)
+    aggregate_data(config, cyto_outdir, outdir)
+
+
+@app.command()
 def version():
     from importlib.metadata import version
 

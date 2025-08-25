@@ -7,11 +7,12 @@ KNOWN_LIBMODES = ["gex", "crispr", "ab"]
 KNOWN_PROBE_SET = ["BC", "CR", "AB"]
 KNOWN_BARCODES = [f"{name}0{i:02d}" for i in range(1, 17) for name in KNOWN_PROBE_SET]
 EXPECTED_SAMPLE_KEYS = [
-    "name",
-    "subname",
-    "libmode",
-    "lanes",
+    "experiment",
+    "sample",
+    "mode",
+    "lane",
     "barcodes",
+    "features",
 ]
 EXPECTED_KEYS = [
     "libraries",
@@ -30,21 +31,21 @@ def _validate_keys(entry: dict):
         raise ValueError(f"Missing keys in entry: {entry}")
 
 
-def _parse_libmode(entry: dict) -> list[str]:
-    libmode = entry["libmode"]
+def _parse_mode(entry: dict) -> list[str]:
+    libmode = entry["mode"]
     if "+" in libmode:
         modes = libmode.split("+")
         if not all(mode in KNOWN_LIBMODES for mode in modes):
-            raise ValueError(f"Invalid mode found in libmode: {libmode}")
+            raise ValueError(f"Invalid mode found: {libmode}")
         return modes
     else:
         if libmode not in KNOWN_LIBMODES:
-            raise ValueError(f"Invalid mode {libmode} found in libmode: {libmode}")
+            raise ValueError(f"Invalid mode {libmode} found: {libmode}")
         return [libmode]
 
 
 def _parse_gem_lanes(entry: dict) -> list[int]:
-    gem_lanes = entry["lanes"]
+    gem_lanes = entry["lane"]
     if "|" in gem_lanes:
         lanes = gem_lanes.split("|")
         if not all(lane.isdigit() for lane in lanes):
@@ -90,7 +91,7 @@ def _parse_barcodes(entry: dict, nlib: int) -> list[list[str]]:
         combinations = barcodes.split("|")
         pairings = [c.split("+") for c in combinations]
     else:
-        pairings = barcodes.split("+")
+        pairings = [barcodes.split("+")]
 
     for p in pairings:
         if len(p) != nlib:
@@ -130,7 +131,7 @@ def parse_config(config_path: str):
     dataframe = []
     for entry in config["samples"]:
         _validate_keys(entry)
-        libmode = _parse_libmode(entry)
+        libmode = _parse_mode(entry)
         nlib = len(libmode)
         gem_lanes = _parse_gem_lanes(entry)
         barcodes = _parse_barcodes(entry, nlib)
@@ -140,8 +141,8 @@ def parse_config(config_path: str):
                 for mode, bc_component, mode_feature in zip(libmode, bc, features):
                     dataframe.append(
                         {
-                            "name": entry["name"],
-                            "subname": entry["subname"],
+                            "experiment": entry["experiment"],
+                            "sample": entry["sample"],
                             "mode": mode,
                             "lane": lane,
                             "bc_component": bc_component,
@@ -154,7 +155,15 @@ def parse_config(config_path: str):
                         }
                     )
 
-    return pl.DataFrame(dataframe)
+    return pl.DataFrame(dataframe).with_columns(
+        expected_prefix=(
+            pl.col("experiment")
+            + "_"
+            + pl.col("mode").str.to_uppercase()
+            + "_Lane"
+            + pl.col("lane").cast(pl.String)
+        )
+    )
 
 
 def determine_cyto_runs(sample_sheet: pl.DataFrame) -> pl.DataFrame:
