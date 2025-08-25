@@ -10,6 +10,8 @@ def aggregate_data(config: pl.DataFrame, cyto_outdir: str, outdir: str):
     unique_samples = config["sample"].unique().to_list()
 
     for s in unique_samples:
+        print(f"Processing sample {s}...", file=sys.stderr)
+
         subset = config.filter(pl.col("sample") == s)
 
         # identify necessary prefixes for output
@@ -40,6 +42,8 @@ def aggregate_data(config: pl.DataFrame, cyto_outdir: str, outdir: str):
         for root, _dirs, _files in os.walk(cyto_outdir):
             basename = os.path.basename(root)
             if prefix_regex.search(basename):
+                print(f"Processing {basename}...", file=sys.stderr)
+
                 lane_regex_match = lane_regex.search(basename)
                 if lane_regex_match:
                     lane_id = lane_regex_match.group(1)
@@ -99,12 +103,14 @@ def aggregate_data(config: pl.DataFrame, cyto_outdir: str, outdir: str):
         os.makedirs(sample_outdir, exist_ok=True)
 
         if len(gex_adata) > 0:
+            print("Writing GEX data...", file=sys.stderr)
             gex_adata = ad.concat(gex_adata)
             gex_adata.write_h5ad(
                 os.path.join(sample_outdir, f"{s}_gex.h5ad"), compression="gzip"
             )
 
         if len(assignments) > 0:
+            print("Writing assignments...", file=sys.stderr)
             assignments = pl.concat(assignments)
             assignments.write_csv(
                 os.path.join(sample_outdir, f"{s}_assignments.tsv"), separator="\t"
