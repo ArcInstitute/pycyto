@@ -111,7 +111,7 @@ def aggregate_data(config: pl.DataFrame, cyto_outdir: str, outdir: str):
 
         if len(assignments) > 0:
             print("Writing assignments...", file=sys.stderr)
-            assignments = pl.concat(assignments)
+            assignments = pl.concat(assignments, how="vertical_relaxed")
             assignments.write_csv(
                 os.path.join(sample_outdir, f"{s}_assignments.tsv"), separator="\t"
             )
