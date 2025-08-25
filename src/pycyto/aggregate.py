@@ -28,7 +28,7 @@ def aggregate_data(config: pl.DataFrame, cyto_outdir: str, outdir: str):
             .to_list()
         )
         crispr_bcs = (
-            subset.filter(pl.col("mode") == "gex")
+            subset.filter(pl.col("mode") == "crispr")
             .select("bc_component")
             .to_series()
             .to_list()
