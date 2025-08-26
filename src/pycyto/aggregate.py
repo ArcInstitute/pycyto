@@ -102,16 +102,55 @@ def aggregate_data(config: pl.DataFrame, cyto_outdir: str, outdir: str):
         sample_outdir = os.path.join(outdir, s)
         os.makedirs(sample_outdir, exist_ok=True)
 
-        if len(gex_adata) > 0:
+        # CRISPR + GEX case
+        if len(gex_adata) > 0 and len(assignments) > 0:
+            gex_adata = ad.concat(gex_adata)
+            gex_adata.obs.index += "-" + gex_adata.obs["lane_id"].astype(str)
+
+            assignments = pl.concat(assignments, how="vertical_relaxed").unique()
+
+            # rename CR -> BC for intersection
+            if any(["CR" in cr for cr in crispr_bcs]):
+                assignments = assignments.with_columns(
+                    match_barcode=pl.col("cell_id")
+                    + "-"
+                    + pl.col("lane_id").cast(pl.String)
+                ).with_columns(pl.col("match_barcode").str.replace("CR", "BC"))
+            else:
+                assignments = assignments.with_columns(
+                    match_barcode=pl.col("cell_id")
+                    + "-"
+                    + pl.col("lane_id").cast(pl.String)
+                )
+
+            gex_adata.obs = gex_adata.obs.merge(  # type: ignore
+                assignments.select(["match_barcode", "assignment", "counts", "moi"])
+                .to_pandas()
+                .set_index("match_barcode"),
+                left_index=True,
+                right_index=True,
+                how="left",
+            )
+
+            # Write both modes
+            gex_adata.write_h5ad(
+                os.path.join(sample_outdir, f"{s}_gex.h5ad"), compression="gzip"
+            )
+            assignments.write_csv(
+                os.path.join(sample_outdir, f"{s}_assignments.tsv"), separator="\t"
+            )
+
+        elif len(gex_adata) > 0:
             print("Writing GEX data...", file=sys.stderr)
             gex_adata = ad.concat(gex_adata)
+            gex_adata.obs.index += "-" + gex_adata.obs["lane_id"].astype(str)
             gex_adata.write_h5ad(
                 os.path.join(sample_outdir, f"{s}_gex.h5ad"), compression="gzip"
             )
 
-        if len(assignments) > 0:
+        elif len(assignments) > 0:
             print("Writing assignments...", file=sys.stderr)
-            assignments = pl.concat(assignments, how="vertical_relaxed")
+            assignments = pl.concat(assignments, how="vertical_relaxed").unique()
             assignments.write_csv(
                 os.path.join(sample_outdir, f"{s}_assignments.tsv"), separator="\t"
             )
