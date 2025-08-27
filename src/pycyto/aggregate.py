@@ -80,7 +80,6 @@ def _process_gex_crispr_set(
 
 def _load_assignments_for_experiment_sample(
     root: str,
-    basename: str,
     crispr_bcs: list[str],
     lane_id: str,
     experiment: str,
@@ -104,10 +103,37 @@ def _load_assignments_for_experiment_sample(
             assignments_list.append(bc_assignments)
         else:
             print(
-                f"Missing expected CRISPR assignments data for `{basename}` in {root} in path: {expected_crispr_assignments_path}",
+                f"Missing expected CRISPR assignments data for `{crispr_bc}` in {root} in path: {expected_crispr_assignments_path}",
                 file=sys.stderr,
             )
     return assignments_list
+
+
+def _load_gex_anndata_for_experiment_sample(
+    root: str,
+    gex_bcs: list[str],
+    lane_id: str,
+    experiment: str,
+) -> list[ad.AnnData]:
+    gex_adata_list = []
+    expected_gex_adata_dir = os.path.join(root, "counts")
+    for gex_bc in gex_bcs:
+        expected_gex_adata_path = os.path.join(
+            expected_gex_adata_dir, f"{gex_bc}.filt.h5ad"
+        )
+        if os.path.exists(expected_gex_adata_path):
+            bc_adata = ad.read_h5ad(expected_gex_adata_path)
+            bc_adata.obs["bc_idx"] = gex_bc
+            bc_adata.obs["lane_id"] = lane_id
+            bc_adata.obs["experiment"] = experiment
+            bc_adata.obs.index += "-" + bc_adata.obs["lane_id"].astype(str)
+            gex_adata_list.append(bc_adata)
+        else:
+            print(
+                f"Missing expected GEX data for `{gex_bc}` in {root} in path: {expected_gex_adata_path}",
+                file=sys.stderr,
+            )
+    return gex_adata_list
 
 
 def aggregate_data(
@@ -165,7 +191,6 @@ def aggregate_data(
                     if crispr_regex.match(basename):
                         _load_assignments_for_experiment_sample(
                             root=root,
-                            basename=basename,
                             crispr_bcs=crispr_bcs,
                             lane_id=lane_id,
                             experiment=e,
@@ -173,26 +198,12 @@ def aggregate_data(
 
                     # process gex data
                     elif gex_regex.search(basename):
-                        expected_gex_adata_dir = os.path.join(root, "counts")
-                        for gex_bc in gex_bcs:
-                            expected_gex_adata_path = os.path.join(
-                                expected_gex_adata_dir, f"{gex_bc}.filt.h5ad"
-                            )
-
-                            if os.path.exists(expected_gex_adata_path):
-                                bc_adata = ad.read_h5ad(expected_gex_adata_path)
-                                bc_adata.obs["bc_idx"] = gex_bc
-                                bc_adata.obs["lane_id"] = lane_id
-                                bc_adata.obs["experiment"] = e
-                                bc_adata.obs.index += "-" + bc_adata.obs[
-                                    "lane_id"
-                                ].astype(str)
-                                gex_adata_list.append(bc_adata)
-                            else:
-                                print(
-                                    f"Missing expected GEX data for `{gex_bc}` in {root} in path: {expected_gex_adata_path}",
-                                    file=sys.stderr,
-                                )
+                        _load_gex_anndata_for_experiment_sample(
+                            root=root,
+                            gex_bcs=gex_bcs,
+                            lane_id=lane_id,
+                            experiment=e,
+                        )
 
                     n_matches += 1
 
