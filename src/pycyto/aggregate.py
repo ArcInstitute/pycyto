@@ -97,9 +97,9 @@ def aggregate_data(
                                 bc_adata.obs["bc_idx"] = gex_bc
                                 bc_adata.obs["lane_id"] = lane_id
                                 bc_adata.obs["experiment"] = e
-                                bc_adata.obs.index += "-" + bc_adata["lane_id"].astype(
-                                    str
-                                )
+                                bc_adata.obs.index += "-" + bc_adata.obs[
+                                    "lane_id"
+                                ].astype(str)
                                 gex_adata.append(bc_adata)
                             else:
                                 print(
