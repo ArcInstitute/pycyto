@@ -97,6 +97,9 @@ def aggregate_data(
                                 bc_adata.obs["bc_idx"] = gex_bc
                                 bc_adata.obs["lane_id"] = lane_id
                                 bc_adata.obs["experiment"] = e
+                                bc_adata.obs.index += "-" + bc_adata["lane_id"].astype(
+                                    str
+                                )
                                 gex_adata.append(bc_adata)
                             else:
                                 print(
@@ -116,8 +119,6 @@ def aggregate_data(
             # CRISPR + GEX case
             if len(gex_adata) > 0 and len(assignments) > 0:
                 gex_adata = ad.concat(gex_adata)
-                gex_adata.obs.index += "-" + gex_adata.obs["lane_id"].astype(str)
-
                 assignments = pl.concat(assignments, how="vertical_relaxed").unique()
 
                 # rename CR -> BC for intersection
@@ -156,7 +157,6 @@ def aggregate_data(
             elif len(gex_adata) > 0:
                 print("Writing GEX data...", file=sys.stderr)
                 gex_adata = ad.concat(gex_adata)
-                gex_adata.obs.index += "-" + gex_adata.obs["lane_id"].astype(str)
                 gex_adata.write_h5ad(
                     os.path.join(sample_outdir, f"{e}_{s}_gex.h5ad"),
                     compression="gzip" if compress else None,
