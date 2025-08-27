@@ -78,6 +78,38 @@ def _process_gex_crispr_set(
     )
 
 
+def _load_assignments_for_experiment_sample(
+    root: str,
+    basename: str,
+    crispr_bcs: list[str],
+    lane_id: str,
+    experiment: str,
+) -> list[pl.DataFrame]:
+    assignments_list = []
+    expected_crispr_assignments_dir = os.path.join(root, "assignments")
+    for crispr_bc in crispr_bcs:
+        expected_crispr_assignments_path = os.path.join(
+            expected_crispr_assignments_dir,
+            f"{crispr_bc}.assignments.tsv",
+        )
+        if os.path.exists(expected_crispr_assignments_path):
+            bc_assignments = pl.read_csv(
+                expected_crispr_assignments_path,
+                separator="\t",
+            ).with_columns(
+                pl.lit(crispr_bc).alias("bc_idx"),
+                pl.lit(lane_id).alias("lane_id"),
+                pl.lit(experiment).alias("experiment"),
+            )
+            assignments_list.append(bc_assignments)
+        else:
+            print(
+                f"Missing expected CRISPR assignments data for `{basename}` in {root} in path: {expected_crispr_assignments_path}",
+                file=sys.stderr,
+            )
+    return assignments_list
+
+
 def aggregate_data(
     config: pl.DataFrame, cyto_outdir: str, outdir: str, compress: bool = False
 ):
@@ -131,30 +163,13 @@ def aggregate_data(
 
                     # process crispr data
                     if crispr_regex.match(basename):
-                        expected_crispr_assignments_dir = os.path.join(
-                            root, "assignments"
+                        _load_assignments_for_experiment_sample(
+                            root=root,
+                            basename=basename,
+                            crispr_bcs=crispr_bcs,
+                            lane_id=lane_id,
+                            experiment=e,
                         )
-
-                        for crispr_bc in crispr_bcs:
-                            expected_crispr_assignments_path = os.path.join(
-                                expected_crispr_assignments_dir,
-                                f"{crispr_bc}.assignments.tsv",
-                            )
-                            if os.path.exists(expected_crispr_assignments_path):
-                                bc_assignments = pl.read_csv(
-                                    expected_crispr_assignments_path,
-                                    separator="\t",
-                                ).with_columns(
-                                    pl.lit(crispr_bc).alias("bc_idx"),
-                                    pl.lit(lane_id).alias("lane_id"),
-                                    pl.lit(e).alias("experiment"),
-                                )
-                                assignments_list.append(bc_assignments)
-                            else:
-                                print(
-                                    f"Missing expected CRISPR assignments data for `{basename}` in {root} in path: {expected_crispr_assignments_path}",
-                                    file=sys.stderr,
-                                )
 
                     # process gex data
                     elif gex_regex.search(basename):
