@@ -115,8 +115,8 @@ def aggregate_data(
                 .to_list()
             )
 
-            gex_adata = []
-            assignments = []
+            gex_adata_list = []
+            assignments_list = []
             n_matches = 0
             for root, _dirs, _files in os.walk(cyto_outdir):
                 basename = os.path.basename(root)
@@ -149,7 +149,7 @@ def aggregate_data(
                                     pl.lit(lane_id).alias("lane_id"),
                                     pl.lit(e).alias("experiment"),
                                 )
-                                assignments.append(bc_assignments)
+                                assignments_list.append(bc_assignments)
                             else:
                                 print(
                                     f"Missing expected CRISPR assignments data for `{basename}` in {root} in path: {expected_crispr_assignments_path}",
@@ -172,7 +172,7 @@ def aggregate_data(
                                 bc_adata.obs.index += "-" + bc_adata.obs[
                                     "lane_id"
                                 ].astype(str)
-                                gex_adata.append(bc_adata)
+                                gex_adata_list.append(bc_adata)
                             else:
                                 print(
                                     f"Missing expected GEX data for `{gex_bc}` in {root} in path: {expected_gex_adata_path}",
@@ -189,10 +189,10 @@ def aggregate_data(
             os.makedirs(sample_outdir, exist_ok=True)
 
             # CRISPR + GEX case
-            if len(gex_adata) > 0 and len(assignments) > 0:
+            if len(gex_adata_list) > 0 and len(assignments_list) > 0:
                 _process_gex_crispr_set(
-                    gex_adata_list=gex_adata,
-                    assignments_list=assignments,
+                    gex_adata_list=gex_adata_list,
+                    assignments_list=assignments_list,
                     crispr_bcs=crispr_bcs,
                     sample_outdir=sample_outdir,
                     experiment=e,
@@ -200,9 +200,9 @@ def aggregate_data(
                     compress=compress,
                 )
 
-            elif len(gex_adata) > 0:
+            elif len(gex_adata_list) > 0:
                 print("Writing GEX data...", file=sys.stderr)
-                gex_adata = ad.concat(gex_adata)
+                gex_adata = ad.concat(gex_adata_list)
                 _write_gex_h5ad(
                     adata=gex_adata,
                     sample_outdir=sample_outdir,
@@ -211,9 +211,11 @@ def aggregate_data(
                     compress=compress,
                 )
 
-            elif len(assignments) > 0:
+            elif len(assignments_list) > 0:
                 print("Writing assignments...", file=sys.stderr)
-                assignments = pl.concat(assignments, how="vertical_relaxed").unique()
+                assignments = pl.concat(
+                    assignments_list, how="vertical_relaxed"
+                ).unique()
                 _write_assignments_tsv(
                     assignments=assignments,
                     sample_outdir=sample_outdir,
