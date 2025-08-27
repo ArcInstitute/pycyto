@@ -6,6 +6,78 @@ import anndata as ad
 import polars as pl
 
 
+def _write_gex_h5ad(
+    adata: ad.AnnData,
+    sample_outdir: str,
+    experiment: str,
+    sample: str,
+    compress: bool = False,
+):
+    adata.write_h5ad(
+        os.path.join(sample_outdir, f"{experiment}_{sample}_gex.h5ad"),
+        compression="gzip" if compress else None,
+    )
+
+
+def _write_assignments_tsv(
+    assignments: pl.DataFrame,
+    sample_outdir: str,
+    experiment: str,
+    sample: str,
+):
+    assignments.write_csv(
+        os.path.join(sample_outdir, f"{experiment}_{sample}_assignments.tsv"),
+        separator="\t",
+    )
+
+
+def _process_gex_crispr_set(
+    gex_adata_list: list[ad.AnnData],
+    assignments_list: list[pl.DataFrame],
+    crispr_bcs: list[str],
+    sample_outdir: str,
+    experiment: str,
+    sample: str,
+    compress: bool = False,
+):
+    gex_adata = ad.concat(gex_adata_list)
+    assignments = pl.concat(assignments_list, how="vertical_relaxed").unique()
+
+    # rename CR -> BC for intersection
+    if any(["CR" in cr for cr in crispr_bcs]):
+        assignments = assignments.with_columns(
+            match_barcode=pl.col("cell_id") + "-" + pl.col("lane_id").cast(pl.String)
+        ).with_columns(pl.col("match_barcode").str.replace("CR", "BC"))
+    else:
+        assignments = assignments.with_columns(
+            match_barcode=pl.col("cell_id") + "-" + pl.col("lane_id").cast(pl.String)
+        )
+
+    gex_adata.obs = gex_adata.obs.merge(  # type: ignore
+        assignments.select(["match_barcode", "assignment", "counts", "moi"])
+        .to_pandas()
+        .set_index("match_barcode"),
+        left_index=True,
+        right_index=True,
+        how="left",
+    )
+
+    # Write both modes
+    _write_gex_h5ad(
+        adata=gex_adata,
+        sample_outdir=sample_outdir,
+        experiment=experiment,
+        sample=sample,
+        compress=compress,
+    )
+    _write_assignments_tsv(
+        assignments=assignments,
+        sample_outdir=sample_outdir,
+        experiment=experiment,
+        sample=sample,
+    )
+
+
 def aggregate_data(
     config: pl.DataFrame, cyto_outdir: str, outdir: str, compress: bool = False
 ):
@@ -118,56 +190,35 @@ def aggregate_data(
 
             # CRISPR + GEX case
             if len(gex_adata) > 0 and len(assignments) > 0:
-                gex_adata = ad.concat(gex_adata)
-                assignments = pl.concat(assignments, how="vertical_relaxed").unique()
-
-                # rename CR -> BC for intersection
-                if any(["CR" in cr for cr in crispr_bcs]):
-                    assignments = assignments.with_columns(
-                        match_barcode=pl.col("cell_id")
-                        + "-"
-                        + pl.col("lane_id").cast(pl.String)
-                    ).with_columns(pl.col("match_barcode").str.replace("CR", "BC"))
-                else:
-                    assignments = assignments.with_columns(
-                        match_barcode=pl.col("cell_id")
-                        + "-"
-                        + pl.col("lane_id").cast(pl.String)
-                    )
-
-                gex_adata.obs = gex_adata.obs.merge(  # type: ignore
-                    assignments.select(["match_barcode", "assignment", "counts", "moi"])
-                    .to_pandas()
-                    .set_index("match_barcode"),
-                    left_index=True,
-                    right_index=True,
-                    how="left",
-                )
-
-                # Write both modes
-                gex_adata.write_h5ad(
-                    os.path.join(sample_outdir, f"{e}_{s}_gex.h5ad"),
-                    compression="gzip" if compress else None,
-                )
-                assignments.write_csv(
-                    os.path.join(sample_outdir, f"{e}_{s}_assignments.tsv"),
-                    separator="\t",
+                _process_gex_crispr_set(
+                    gex_adata_list=gex_adata,
+                    assignments_list=assignments,
+                    crispr_bcs=crispr_bcs,
+                    sample_outdir=sample_outdir,
+                    experiment=e,
+                    sample=s,
+                    compress=compress,
                 )
 
             elif len(gex_adata) > 0:
                 print("Writing GEX data...", file=sys.stderr)
                 gex_adata = ad.concat(gex_adata)
-                gex_adata.write_h5ad(
-                    os.path.join(sample_outdir, f"{e}_{s}_gex.h5ad"),
-                    compression="gzip" if compress else None,
+                _write_gex_h5ad(
+                    adata=gex_adata,
+                    sample_outdir=sample_outdir,
+                    experiment=e,
+                    sample=s,
+                    compress=compress,
                 )
 
             elif len(assignments) > 0:
                 print("Writing assignments...", file=sys.stderr)
                 assignments = pl.concat(assignments, how="vertical_relaxed").unique()
-                assignments.write_csv(
-                    os.path.join(sample_outdir, f"{e}_{s}_assignments.tsv"),
-                    separator="\t",
+                _write_assignments_tsv(
+                    assignments=assignments,
+                    sample_outdir=sample_outdir,
+                    experiment=e,
+                    sample=s,
                 )
 
             print(f"Found {n_matches} matches")
