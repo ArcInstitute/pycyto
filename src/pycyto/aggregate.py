@@ -43,10 +43,6 @@ def aggregate_data(
                 .to_list()
             )
 
-            print(subset)
-            print(gex_bcs)
-            print(crispr_bcs)
-
             gex_adata = []
             assignments = []
             n_matches = 0
