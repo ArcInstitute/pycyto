@@ -12,6 +12,7 @@ def _write_gex_h5ad(
     sample: str,
     compress: bool = False,
 ):
+    adata.obs_names_make_unique()  # always make unique
     adata.write_h5ad(
         os.path.join(sample_outdir, f"{sample}_gex.h5ad"),
         compression="gzip" if compress else None,
@@ -90,10 +91,10 @@ def _load_assignments_for_experiment_sample(
                 expected_crispr_assignments_path,
                 separator="\t",
             ).with_columns(
-                pl.lit(crispr_bc).alias("bc_idx"),
-                pl.lit(lane_id).alias("lane_id"),
-                pl.lit(experiment).alias("experiment"),
                 pl.lit(sample).alias("sample"),
+                pl.lit(experiment).alias("experiment"),
+                pl.lit(lane_id).alias("lane_id"),
+                pl.lit(crispr_bc).alias("bc_idx"),
             )
             assignments_list.append(bc_assignments)
         else:
@@ -119,10 +120,10 @@ def _load_gex_anndata_for_experiment_sample(
         )
         if os.path.exists(expected_gex_adata_path):
             bc_adata = ad.read_h5ad(expected_gex_adata_path)
-            bc_adata.obs["bc_idx"] = gex_bc
-            bc_adata.obs["lane_id"] = lane_id
-            bc_adata.obs["experiment"] = experiment
             bc_adata.obs["sample"] = sample
+            bc_adata.obs["experiment"] = experiment
+            bc_adata.obs["lane_id"] = lane_id
+            bc_adata.obs["bc_idx"] = gex_bc
             bc_adata.obs.index += "-" + bc_adata.obs["lane_id"].astype(str)
             gex_adata_list.append(bc_adata)
         else:
