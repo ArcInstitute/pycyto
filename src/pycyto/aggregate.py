@@ -32,14 +32,20 @@ def aggregate_data(
                 subset.filter(pl.col("mode") == "gex")
                 .select("bc_component")
                 .to_series()
+                .unique()
                 .to_list()
             )
             crispr_bcs = (
                 subset.filter(pl.col("mode") == "crispr")
                 .select("bc_component")
                 .to_series()
+                .unique()
                 .to_list()
             )
+
+            print(subset)
+            print(gex_bcs)
+            print(crispr_bcs)
 
             gex_adata = []
             assignments = []
@@ -141,11 +147,12 @@ def aggregate_data(
 
                 # Write both modes
                 gex_adata.write_h5ad(
-                    os.path.join(sample_outdir, f"{s}_gex.h5ad"),
+                    os.path.join(sample_outdir, f"{e}_{s}_gex.h5ad"),
                     compression="gzip" if compress else None,
                 )
                 assignments.write_csv(
-                    os.path.join(sample_outdir, f"{s}_assignments.tsv"), separator="\t"
+                    os.path.join(sample_outdir, f"{e}_{s}_assignments.tsv"),
+                    separator="\t",
                 )
 
             elif len(gex_adata) > 0:
@@ -153,7 +160,7 @@ def aggregate_data(
                 gex_adata = ad.concat(gex_adata)
                 gex_adata.obs.index += "-" + gex_adata.obs["lane_id"].astype(str)
                 gex_adata.write_h5ad(
-                    os.path.join(sample_outdir, f"{s}_gex.h5ad"),
+                    os.path.join(sample_outdir, f"{e}_{s}_gex.h5ad"),
                     compression="gzip" if compress else None,
                 )
 
@@ -161,7 +168,8 @@ def aggregate_data(
                 print("Writing assignments...", file=sys.stderr)
                 assignments = pl.concat(assignments, how="vertical_relaxed").unique()
                 assignments.write_csv(
-                    os.path.join(sample_outdir, f"{s}_assignments.tsv"), separator="\t"
+                    os.path.join(sample_outdir, f"{e}_{s}_assignments.tsv"),
+                    separator="\t",
                 )
 
             print(f"Found {n_matches} matches")
