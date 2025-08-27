@@ -79,6 +79,7 @@ def aggregate_data(
                                 ).with_columns(
                                     pl.lit(crispr_bc).alias("bc_idx"),
                                     pl.lit(lane_id).alias("lane_id"),
+                                    pl.lit(e).alias("experiment"),
                                 )
                                 assignments.append(bc_assignments)
                             else:
@@ -99,6 +100,7 @@ def aggregate_data(
                                 bc_adata = ad.read_h5ad(expected_gex_adata_path)
                                 bc_adata.obs["bc_idx"] = gex_bc
                                 bc_adata.obs["lane_id"] = lane_id
+                                bc_adata.obs["experiment"] = e
                                 gex_adata.append(bc_adata)
                             else:
                                 print(
