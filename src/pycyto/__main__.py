@@ -72,6 +72,7 @@ def aggregate(
     outdir: Annotated[
         str, typer.Argument(help="Path to output directory to write aggregated files")
     ],
+    compress: Annotated[bool, typer.Option(help="Compress output files")] = False,
 ):
     """Aggregate cyto output files"""
 
@@ -79,7 +80,7 @@ def aggregate(
     from .config import parse_config
 
     config = parse_config(config_path)
-    aggregate_data(config, cyto_outdir, outdir)
+    aggregate_data(config, cyto_outdir, outdir, compress=compress)
 
 
 @app.command()

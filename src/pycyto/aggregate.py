@@ -6,7 +6,9 @@ import anndata as ad
 import polars as pl
 
 
-def aggregate_data(config: pl.DataFrame, cyto_outdir: str, outdir: str):
+def aggregate_data(
+    config: pl.DataFrame, cyto_outdir: str, outdir: str, compress: bool = False
+):
     unique_samples = config["sample"].unique().to_list()
 
     for s in unique_samples:
@@ -134,7 +136,8 @@ def aggregate_data(config: pl.DataFrame, cyto_outdir: str, outdir: str):
 
             # Write both modes
             gex_adata.write_h5ad(
-                os.path.join(sample_outdir, f"{s}_gex.h5ad"), compression="gzip"
+                os.path.join(sample_outdir, f"{s}_gex.h5ad"),
+                compression="gzip" if compress else None,
             )
             assignments.write_csv(
                 os.path.join(sample_outdir, f"{s}_assignments.tsv"), separator="\t"
@@ -145,7 +148,8 @@ def aggregate_data(config: pl.DataFrame, cyto_outdir: str, outdir: str):
             gex_adata = ad.concat(gex_adata)
             gex_adata.obs.index += "-" + gex_adata.obs["lane_id"].astype(str)
             gex_adata.write_h5ad(
-                os.path.join(sample_outdir, f"{s}_gex.h5ad"), compression="gzip"
+                os.path.join(sample_outdir, f"{s}_gex.h5ad"),
+                compression="gzip" if compress else None,
             )
 
         elif len(assignments) > 0:
