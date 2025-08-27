@@ -188,23 +188,27 @@ def aggregate_data(
 
                     # process crispr data
                     if crispr_regex.match(basename):
-                        _load_assignments_for_experiment_sample(
-                            root=root,
-                            crispr_bcs=crispr_bcs,
-                            lane_id=lane_id,
-                            experiment=e,
-                            sample=s,
+                        local_assignments_list = (
+                            _load_assignments_for_experiment_sample(
+                                root=root,
+                                crispr_bcs=crispr_bcs,
+                                lane_id=lane_id,
+                                experiment=e,
+                                sample=s,
+                            )
                         )
+                        assignments_list.extend(local_assignments_list)
 
                     # process gex data
                     elif gex_regex.search(basename):
-                        _load_gex_anndata_for_experiment_sample(
+                        local_gex_list = _load_gex_anndata_for_experiment_sample(
                             root=root,
                             gex_bcs=gex_bcs,
                             lane_id=lane_id,
                             experiment=e,
                             sample=s,
                         )
+                        gex_adata_list.extend(local_gex_list)
 
                     n_matches += 1
 
