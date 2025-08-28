@@ -31,6 +31,40 @@ def _write_assignments_tsv(
     )
 
 
+def _filter_crispr_adata_to_gex_barcodes(
+    gex_adata: ad.AnnData,
+    crispr_adata: ad.AnnData,
+) -> ad.AnnData:
+    """Filters the CRISPR data to only include barcodes present in the GEX data.
+
+    Creates a dummy column on each that captures all unique information.
+
+    # already annotated
+    index: (cell_barcode + flex_barcode + lane_id)
+
+    # to create
+    dummy = index + sample + experiment
+    """
+    gex_adata.obs["dummy"] = (
+        gex_adata.obs.index
+        + "-"
+        + gex_adata.obs["sample"]
+        + "-"
+        + gex_adata.obs["experiment"]
+    )
+    crispr_adata.obs["dummy"] = (
+        crispr_adata.obs.index
+        + "-"
+        + crispr_adata.obs["sample"]
+        + "-"
+        + crispr_adata.obs["experiment"]
+    )
+    mask = crispr_adata.obs["dummy"].isin(gex_adata.obs["dummy"])
+    gex_adata.obs.drop(columns=["dummy"], inplace=True)  # type: ignore
+    crispr_adata.obs.drop(columns=["dummy"], inplace=True)  # type: ignore
+    return crispr_adata[mask]
+
+
 def _process_gex_crispr_set(
     gex_adata_list: list[ad.AnnData],
     crispr_adata_list: list[ad.AnnData],
@@ -63,7 +97,10 @@ def _process_gex_crispr_set(
     )
 
     # Filter crispr adata to filtered barcodes
-    filt_crispr_adata = crispr_adata[crispr_adata.obs.index.isin(gex_adata.obs.index)]
+    filt_crispr_adata = _filter_crispr_adata_to_gex_barcodes(
+        gex_adata=gex_adata,
+        crispr_adata=crispr_adata,
+    )
 
     # Write both modes
     _write_h5ad(
