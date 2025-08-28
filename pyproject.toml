@@ -1,6 +1,6 @@
 [project]
 name = "pycyto"
-version = "0.1.1"
+version = "0.1.2"
 description = "Python utilities used by cyto"
 license = "MIT"
 readme = "README.md"
@@ -13,6 +13,7 @@ dependencies = [
     "numpy>=2.3.2",
     "pandas>=2.3.1",
     "polars>=1.32.3",
+    "pyarrow>=21.0.0",
     "scipy>=1.16.1",
     "typer>=0.16.0",
 ]
