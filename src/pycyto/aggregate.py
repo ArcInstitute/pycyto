@@ -37,7 +37,7 @@ def _write_reads_tsv(
     sample: str,
 ):
     reads_df.write_csv(
-        os.path.join(sample_outdir, f"{sample}_reads.tsv"),
+        os.path.join(sample_outdir, f"{sample}_reads.tsv.zst"),
         separator="\t",
     )
 
