@@ -336,7 +336,7 @@ def aggregate_data(
                         # process barcode-level read statistics
                         local_reads_list = _load_reads_for_experiment_sample(
                             root=root,
-                            bcs=gex_bcs,
+                            bcs=crispr_bcs,
                             lane_id=lane_id,
                             experiment=e,
                             sample=s,
