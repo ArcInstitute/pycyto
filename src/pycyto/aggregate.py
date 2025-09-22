@@ -234,7 +234,7 @@ def _load_crispr_anndata_for_experiment_sample(
 
 
 def _load_reads_for_experiment_sample(
-    root: str, bcs: list[str], lane_id: str, experiment: str, sample: str
+    root: str, bcs: list[str], lane_id: str, experiment: str, sample: str, mode: str
 ) -> list[pl.DataFrame]:
     reads_list = []
     for bc in bcs:
@@ -249,6 +249,7 @@ def _load_reads_for_experiment_sample(
                 pl.lit(lane_id).alias("lane_id"),
                 pl.lit(experiment).alias("experiment"),
                 pl.lit(sample).alias("sample"),
+                pl.lit(mode).alias("mode"),
             )
             reads_list.append(reads_df)
         else:
@@ -347,6 +348,7 @@ def aggregate_data(
                             lane_id=lane_id,
                             experiment=e,
                             sample=s,
+                            mode="crispr",
                         )
                         reads_list.extend(local_reads_list)
 
@@ -368,6 +370,7 @@ def aggregate_data(
                             lane_id=lane_id,
                             experiment=e,
                             sample=s,
+                            mode="gex",
                         )
                         reads_list.extend(local_reads_list)
 
