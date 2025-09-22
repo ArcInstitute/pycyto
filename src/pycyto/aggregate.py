@@ -80,6 +80,7 @@ def _process_gex_crispr_set(
     gex_adata_list: list[ad.AnnData],
     crispr_adata_list: list[ad.AnnData],
     assignments_list: list[pl.DataFrame],
+    reads_list: list[pl.DataFrame],
     sample_outdir: str,
     sample: str,
     compress: bool = False,
@@ -87,9 +88,13 @@ def _process_gex_crispr_set(
     gex_adata = ad.concat(gex_adata_list)
     crispr_adata = ad.concat(crispr_adata_list)
     assignments = pl.concat(assignments_list, how="vertical_relaxed").unique()
+    reads_df = pl.concat(reads_list, how="vertical_relaxed").unique()
 
     if assignments["cell_id"].str.contains("CR").any():
         assignments = assignments.with_columns(
+            match_barcode=pl.col("cell_id") + "-" + pl.col("lane_id").cast(pl.String)
+        ).with_columns(pl.col("match_barcode").str.replace("CR", "BC"))
+        reads_df = reads_df.with_columns(
             match_barcode=pl.col("cell_id") + "-" + pl.col("lane_id").cast(pl.String)
         ).with_columns(pl.col("match_barcode").str.replace("CR", "BC"))
         crispr_adata.obs.index = crispr_adata.obs.index.str.replace("CR", "BC")
@@ -97,9 +102,21 @@ def _process_gex_crispr_set(
         assignments = assignments.with_columns(
             match_barcode=pl.col("cell_id") + "-" + pl.col("lane_id").cast(pl.String)
         )
+        reads_df = reads_df.with_columns(
+            match_barcode=pl.col("cell_id") + "-" + pl.col("lane_id").cast(pl.String)
+        )
 
     gex_adata.obs = gex_adata.obs.merge(  # type: ignore
         assignments.select(["match_barcode", "assignment", "counts", "moi"])
+        .to_pandas()
+        .set_index("match_barcode"),
+        left_index=True,
+        right_index=True,
+        how="left",
+    ).merge(
+        reads_df.select(["match_barcode", "mode", "n_reads", "n_umis"])
+        .pivot(index="match_barcode", on="mode", values=["n_reads", "n_umis"])
+        .fill_null(0)
         .to_pandas()
         .set_index("match_barcode"),
         left_index=True,
@@ -130,6 +147,11 @@ def _process_gex_crispr_set(
     )
     _write_assignments_parquet(
         assignments=assignments,
+        sample_outdir=sample_outdir,
+        sample=sample,
+    )
+    _write_reads_parquet(
+        reads_df=reads_df,
         sample_outdir=sample_outdir,
         sample=sample,
     )
@@ -227,7 +249,7 @@ def _load_crispr_anndata_for_experiment_sample(
 
 
 def _load_reads_for_experiment_sample(
-    root: str, bcs: list[str], lane_id: str, experiment: str, sample: str
+    root: str, bcs: list[str], lane_id: str, experiment: str, sample: str, mode: str
 ) -> list[pl.DataFrame]:
     reads_list = []
     for bc in bcs:
@@ -235,13 +257,16 @@ def _load_reads_for_experiment_sample(
             root, "stats", "reads", f"{bc}.reads.tsv.zst"
         )
         if os.path.exists(expected_reads_path):
-            reads_df = pl.read_csv(
-                expected_reads_path, separator="\t", has_header=True
-            ).with_columns(
-                pl.lit(bc).alias("bc_idx"),
-                pl.lit(lane_id).alias("lane_id"),
-                pl.lit(experiment).alias("experiment"),
-                pl.lit(sample).alias("sample"),
+            reads_df = (
+                pl.read_csv(expected_reads_path, separator="\t", has_header=True)
+                .with_columns(
+                    pl.lit(bc).alias("bc_idx"),
+                    pl.lit(lane_id).alias("lane_id"),
+                    pl.lit(experiment).alias("experiment"),
+                    pl.lit(sample).alias("sample"),
+                    pl.lit(mode).alias("mode"),
+                )
+                .with_columns(cell_id=pl.col("barcode") + "-" + pl.col("bc_idx"))
             )
             reads_list.append(reads_df)
         else:
@@ -340,6 +365,7 @@ def aggregate_data(
                             lane_id=lane_id,
                             experiment=e,
                             sample=s,
+                            mode="crispr",
                         )
                         reads_list.extend(local_reads_list)
 
@@ -361,6 +387,7 @@ def aggregate_data(
                             lane_id=lane_id,
                             experiment=e,
                             sample=s,
+                            mode="gex",
                         )
                         reads_list.extend(local_reads_list)
 
@@ -379,6 +406,7 @@ def aggregate_data(
                 gex_adata_list=gex_adata_list,
                 crispr_adata_list=crispr_adata_list,
                 assignments_list=assignments_list,
+                reads_list=reads_list,
                 sample_outdir=sample_outdir,
                 sample=s,
                 compress=compress,
@@ -395,11 +423,27 @@ def aggregate_data(
                 mode="gex",
             )
 
+            print("Writing reads...", file=sys.stderr)
+            reads_df = pl.concat(reads_list, how="vertical_relaxed").unique()
+            _write_reads_parquet(
+                reads_df=reads_df,
+                sample_outdir=sample_outdir,
+                sample=s,
+            )
+
         elif len(assignments_list) > 0:
             print("Writing assignments...", file=sys.stderr)
             assignments = pl.concat(assignments_list, how="vertical_relaxed").unique()
             _write_assignments_parquet(
                 assignments=assignments,
+                sample_outdir=sample_outdir,
+                sample=s,
+            )
+
+            print("Writing reads...", file=sys.stderr)
+            reads_df = pl.concat(reads_list, how="vertical_relaxed").unique()
+            _write_reads_parquet(
+                reads_df=reads_df,
                 sample_outdir=sample_outdir,
                 sample=s,
             )
@@ -412,13 +456,4 @@ def aggregate_data(
                 sample=s,
                 compress=compress,
                 mode="crispr",
-            )
-
-        if len(reads_list) > 0:
-            print("Writing reads...", file=sys.stderr)
-            reads_df = pl.concat(reads_list, how="vertical_relaxed").unique()
-            _write_reads_parquet(
-                reads_df=reads_df,
-                sample_outdir=sample_outdir,
-                sample=s,
             )
