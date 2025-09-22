@@ -20,14 +20,25 @@ def _write_h5ad(
     )
 
 
-def _write_assignments_tsv(
+def _write_assignments_parquet(
     assignments: pl.DataFrame,
     sample_outdir: str,
     sample: str,
 ):
-    assignments.write_csv(
-        os.path.join(sample_outdir, f"{sample}_assignments.tsv"),
-        separator="\t",
+    assignments.write_parquet(
+        os.path.join(sample_outdir, f"{sample}_assignments.parquet"),
+        compression="zstd",
+    )
+
+
+def _write_reads_parquet(
+    reads_df: pl.DataFrame,
+    sample_outdir: str,
+    sample: str,
+):
+    reads_df.write_parquet(
+        os.path.join(sample_outdir, f"{sample}_reads.parquet"),
+        compression="zstd",
     )
 
 
@@ -117,7 +128,7 @@ def _process_gex_crispr_set(
         compress=compress,
         mode="crispr",
     )
-    _write_assignments_tsv(
+    _write_assignments_parquet(
         assignments=assignments,
         sample_outdir=sample_outdir,
         sample=sample,
@@ -215,6 +226,32 @@ def _load_crispr_anndata_for_experiment_sample(
     return crispr_adata_list
 
 
+def _load_reads_for_experiment_sample(
+    root: str, bcs: list[str], lane_id: str, experiment: str, sample: str
+) -> list[pl.DataFrame]:
+    reads_list = []
+    for bc in bcs:
+        expected_reads_path = os.path.join(
+            root, "stats", "reads", f"{bc}.reads.tsv.zst"
+        )
+        if os.path.exists(expected_reads_path):
+            reads_df = pl.read_csv(
+                expected_reads_path, separator="\t", has_header=True
+            ).with_columns(
+                pl.lit(bc).alias("bc_idx"),
+                pl.lit(lane_id).alias("lane_id"),
+                pl.lit(experiment).alias("experiment"),
+                pl.lit(sample).alias("sample"),
+            )
+            reads_list.append(reads_df)
+        else:
+            print(
+                f"Missing expected reads data for `{bc}` in {root} in path: {expected_reads_path}",
+                file=sys.stderr,
+            )
+    return reads_list
+
+
 def aggregate_data(
     config: pl.DataFrame, cyto_outdir: str, outdir: str, compress: bool = False
 ):
@@ -227,6 +264,7 @@ def aggregate_data(
         gex_adata_list = []
         crispr_adata_list = []
         assignments_list = []
+        reads_list = []
 
         for e in unique_experiments:
             print(f"Processing sample {s} experiment {e}...", file=sys.stderr)
@@ -295,6 +333,16 @@ def aggregate_data(
                         )
                         crispr_adata_list.extend(local_crispr_adata_list)
 
+                        # process barcode-level read statistics
+                        local_reads_list = _load_reads_for_experiment_sample(
+                            root=root,
+                            bcs=crispr_bcs,
+                            lane_id=lane_id,
+                            experiment=e,
+                            sample=s,
+                        )
+                        reads_list.extend(local_reads_list)
+
                     # process gex data
                     elif gex_regex.search(basename):
                         local_gex_list = _load_gex_anndata_for_experiment_sample(
@@ -305,6 +353,16 @@ def aggregate_data(
                             sample=s,
                         )
                         gex_adata_list.extend(local_gex_list)
+
+                        # process barcode-level read statistics
+                        local_reads_list = _load_reads_for_experiment_sample(
+                            root=root,
+                            bcs=gex_bcs,
+                            lane_id=lane_id,
+                            experiment=e,
+                            sample=s,
+                        )
+                        reads_list.extend(local_reads_list)
 
                     n_matches += 1
 
@@ -340,7 +398,7 @@ def aggregate_data(
         elif len(assignments_list) > 0:
             print("Writing assignments...", file=sys.stderr)
             assignments = pl.concat(assignments_list, how="vertical_relaxed").unique()
-            _write_assignments_tsv(
+            _write_assignments_parquet(
                 assignments=assignments,
                 sample_outdir=sample_outdir,
                 sample=s,
@@ -354,4 +412,13 @@ def aggregate_data(
                 sample=s,
                 compress=compress,
                 mode="crispr",
+            )
+
+        if len(reads_list) > 0:
+            print("Writing reads...", file=sys.stderr)
+            reads_df = pl.concat(reads_list, how="vertical_relaxed").unique()
+            _write_reads_parquet(
+                reads_df=reads_df,
+                sample_outdir=sample_outdir,
+                sample=s,
             )
