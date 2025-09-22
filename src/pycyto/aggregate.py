@@ -80,6 +80,7 @@ def _process_gex_crispr_set(
     gex_adata_list: list[ad.AnnData],
     crispr_adata_list: list[ad.AnnData],
     assignments_list: list[pl.DataFrame],
+    reads_list: list[pl.DataFrame],
     sample_outdir: str,
     sample: str,
     compress: bool = False,
@@ -87,6 +88,7 @@ def _process_gex_crispr_set(
     gex_adata = ad.concat(gex_adata_list)
     crispr_adata = ad.concat(crispr_adata_list)
     assignments = pl.concat(assignments_list, how="vertical_relaxed").unique()
+    reads_df = pl.concat(reads_list, how="vertical_relaxed").unique()
 
     if assignments["cell_id"].str.contains("CR").any():
         assignments = assignments.with_columns(
@@ -130,6 +132,11 @@ def _process_gex_crispr_set(
     )
     _write_assignments_parquet(
         assignments=assignments,
+        sample_outdir=sample_outdir,
+        sample=sample,
+    )
+    _write_reads_parquet(
+        reads_df=reads_df,
         sample_outdir=sample_outdir,
         sample=sample,
     )
@@ -379,6 +386,7 @@ def aggregate_data(
                 gex_adata_list=gex_adata_list,
                 crispr_adata_list=crispr_adata_list,
                 assignments_list=assignments_list,
+                reads_list=reads_list,
                 sample_outdir=sample_outdir,
                 sample=s,
                 compress=compress,
@@ -395,11 +403,27 @@ def aggregate_data(
                 mode="gex",
             )
 
+            print("Writing reads...", file=sys.stderr)
+            reads_df = pl.concat(reads_list, how="vertical_relaxed").unique()
+            _write_reads_parquet(
+                reads_df=reads_df,
+                sample_outdir=sample_outdir,
+                sample=s,
+            )
+
         elif len(assignments_list) > 0:
             print("Writing assignments...", file=sys.stderr)
             assignments = pl.concat(assignments_list, how="vertical_relaxed").unique()
             _write_assignments_parquet(
                 assignments=assignments,
+                sample_outdir=sample_outdir,
+                sample=s,
+            )
+
+            print("Writing reads...", file=sys.stderr)
+            reads_df = pl.concat(reads_list, how="vertical_relaxed").unique()
+            _write_reads_parquet(
+                reads_df=reads_df,
                 sample_outdir=sample_outdir,
                 sample=s,
             )
@@ -412,13 +436,4 @@ def aggregate_data(
                 sample=s,
                 compress=compress,
                 mode="crispr",
-            )
-
-        if len(reads_list) > 0:
-            print("Writing reads...", file=sys.stderr)
-            reads_df = pl.concat(reads_list, how="vertical_relaxed").unique()
-            _write_reads_parquet(
-                reads_df=reads_df,
-                sample_outdir=sample_outdir,
-                sample=s,
             )
