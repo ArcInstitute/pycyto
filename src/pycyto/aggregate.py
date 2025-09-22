@@ -116,6 +116,7 @@ def _process_gex_crispr_set(
     ).merge(
         reads_df.select(["match_barcode", "mode", "n_reads", "n_umis"])
         .pivot(index="match_barcode", on="mode", values=["n_reads", "n_umis"])
+        .fill_null(0)
         .to_pandas()
         .set_index("match_barcode"),
         left_index=True,
