@@ -20,25 +20,25 @@ def _write_h5ad(
     )
 
 
-def _write_assignments_tsv(
+def _write_assignments_parquet(
     assignments: pl.DataFrame,
     sample_outdir: str,
     sample: str,
 ):
-    assignments.write_csv(
-        os.path.join(sample_outdir, f"{sample}_assignments.tsv"),
-        separator="\t",
+    assignments.write_parquet(
+        os.path.join(sample_outdir, f"{sample}_assignments.parquet"),
+        compression="zstd",
     )
 
 
-def _write_reads_tsv(
+def _write_reads_parquet(
     reads_df: pl.DataFrame,
     sample_outdir: str,
     sample: str,
 ):
-    reads_df.write_csv(
-        os.path.join(sample_outdir, f"{sample}_reads.tsv.zst"),
-        separator="\t",
+    reads_df.write_parquet(
+        os.path.join(sample_outdir, f"{sample}_reads.parquet"),
+        compression="zstd",
     )
 
 
@@ -128,7 +128,7 @@ def _process_gex_crispr_set(
         compress=compress,
         mode="crispr",
     )
-    _write_assignments_tsv(
+    _write_assignments_parquet(
         assignments=assignments,
         sample_outdir=sample_outdir,
         sample=sample,
@@ -398,7 +398,7 @@ def aggregate_data(
         elif len(assignments_list) > 0:
             print("Writing assignments...", file=sys.stderr)
             assignments = pl.concat(assignments_list, how="vertical_relaxed").unique()
-            _write_assignments_tsv(
+            _write_assignments_parquet(
                 assignments=assignments,
                 sample_outdir=sample_outdir,
                 sample=s,
@@ -417,7 +417,7 @@ def aggregate_data(
         if len(reads_list) > 0:
             print("Writing reads...", file=sys.stderr)
             reads_df = pl.concat(reads_list, how="vertical_relaxed").unique()
-            _write_reads_tsv(
+            _write_reads_parquet(
                 reads_df=reads_df,
                 sample_outdir=sample_outdir,
                 sample=s,
