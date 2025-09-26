@@ -90,7 +90,7 @@ def _process_gex_crispr_set(
     assignments = pl.concat(assignments_list, how="vertical_relaxed").unique()
     reads_df = pl.concat(reads_list, how="vertical_relaxed").unique()
 
-    if assignments["cell_id"].str.contains("CR").any():
+    if assignments["cell"].str.contains("CR").any():
         assignments = assignments.with_columns(
             match_barcode=pl.col("cell") + "-" + pl.col("lane_id").cast(pl.String)
         ).with_columns(pl.col("match_barcode").str.replace("CR", "BC"))
