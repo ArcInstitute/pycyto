@@ -90,9 +90,9 @@ def _process_gex_crispr_set(
     assignments = pl.concat(assignments_list, how="vertical_relaxed").unique()
     reads_df = pl.concat(reads_list, how="vertical_relaxed").unique()
 
-    if assignments["cell_id"].str.contains("CR").any():
+    if assignments["cell"].str.contains("CR").any():
         assignments = assignments.with_columns(
-            match_barcode=pl.col("cell_id") + "-" + pl.col("lane_id").cast(pl.String)
+            match_barcode=pl.col("cell") + "-" + pl.col("lane_id").cast(pl.String)
         ).with_columns(pl.col("match_barcode").str.replace("CR", "BC"))
         reads_df = reads_df.with_columns(
             match_barcode=pl.col("cell_id") + "-" + pl.col("lane_id").cast(pl.String)
@@ -100,14 +100,14 @@ def _process_gex_crispr_set(
         crispr_adata.obs.index = crispr_adata.obs.index.str.replace("CR", "BC")
     else:
         assignments = assignments.with_columns(
-            match_barcode=pl.col("cell_id") + "-" + pl.col("lane_id").cast(pl.String)
+            match_barcode=pl.col("cell") + "-" + pl.col("lane_id").cast(pl.String)
         )
         reads_df = reads_df.with_columns(
             match_barcode=pl.col("cell_id") + "-" + pl.col("lane_id").cast(pl.String)
         )
 
     gex_adata.obs = gex_adata.obs.merge(  # type: ignore
-        assignments.select(["match_barcode", "assignment", "counts", "moi"])
+        assignments.select(["match_barcode", "assignment", "umis", "moi"])
         .to_pandas()
         .set_index("match_barcode"),
         left_index=True,
