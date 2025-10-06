@@ -85,8 +85,8 @@ def _process_gex_crispr_set(
     sample: str,
     compress: bool = False,
 ):
-    gex_adata = ad.concat(gex_adata_list)
-    crispr_adata = ad.concat(crispr_adata_list)
+    gex_adata = ad.concat(gex_adata_list, join="outer")
+    crispr_adata = ad.concat(crispr_adata_list, join="outer")
     assignments = pl.concat(assignments_list, how="vertical_relaxed").unique()
     reads_df = pl.concat(reads_list, how="vertical_relaxed").unique()
 
@@ -414,7 +414,7 @@ def aggregate_data(
 
         elif len(gex_adata_list) > 0:
             print("Writing GEX data...", file=sys.stderr)
-            gex_adata = ad.concat(gex_adata_list)
+            gex_adata = ad.concat(gex_adata_list, join="outer")
             _write_h5ad(
                 adata=gex_adata,
                 sample_outdir=sample_outdir,
@@ -449,7 +449,7 @@ def aggregate_data(
             )
 
             print("Writing crispr h5ad...", file=sys.stderr)
-            crispr_adata = ad.concat(crispr_adata_list)
+            crispr_adata = ad.concat(crispr_adata_list, join="outer")
             _write_h5ad(
                 adata=crispr_adata,
                 sample_outdir=sample_outdir,
