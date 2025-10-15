@@ -1,6 +1,6 @@
 [project]
 name = "pycyto"
-version = "0.1.7"
+version = "0.1.8"
 description = "Python utilities used by cyto"
 license = "MIT"
 readme = "README.md"
@@ -30,4 +30,7 @@ venv = ".venv"
 pycyto = "pycyto.__main__:main"
 
 [dependency-groups]
-dev = ["ruff>=0.12.9"]
+dev = [
+    "marimo>=0.16.5",
+    "ruff>=0.12.9",
+]
