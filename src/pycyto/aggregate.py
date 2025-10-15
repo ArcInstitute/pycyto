@@ -321,7 +321,7 @@ def aggregate_data(
             )
 
             n_matches = 0
-            for root, _dirs, _files in os.walk(cyto_outdir):
+            for root, _dirs, _files in os.walk(cyto_outdir, followlinks=True):
                 basename = os.path.basename(root)
                 if prefix_regex.search(basename):
                     print(f"Processing {basename}...", file=sys.stderr)
