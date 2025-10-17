@@ -1,6 +1,6 @@
 [project]
 name = "pycyto"
-version = "0.1.8"
+version = "0.1.9"
 description = "Python utilities used by cyto"
 license = "MIT"
 readme = "README.md"
@@ -32,5 +32,6 @@ pycyto = "pycyto.__main__:main"
 [dependency-groups]
 dev = [
     "marimo>=0.16.5",
+    "pytest>=8.4.2",
     "ruff>=0.12.9",
 ]
