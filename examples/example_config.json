@@ -7,7 +7,6 @@
     {
       "experiment": "S1",
       "mode": "gex",
-      "lane": "1|2|3",
       "features": "GEX_PROBE_LIST",
       "sample": "sample_a",
       "barcodes": "BC001|BC002"
@@ -15,7 +14,6 @@
     {
       "experiment": "S1",
       "mode": "gex+crispr",
-      "lane": "1",
       "features": "GEX_PROBE_LIST+CRISPR_PROBE_LIST",
       "sample": "sample_b",
       "barcodes": "BC001+CR001|BC002+CR002"
@@ -23,7 +21,6 @@
     {
       "experiment": "S2",
       "mode": "gex+crispr",
-      "lane": "1|3|5",
       "features": "GEX_PROBE_LIST+CRISPR_PROBE_LIST",
       "sample": "sample_a",
       "barcodes": "BC001+BC001|BC002+BC002|BC003+BC003"

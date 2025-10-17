@@ -296,9 +296,11 @@ def aggregate_data(
 
             subset = config.filter(pl.col("sample") == s, pl.col("experiment") == e)
 
-            # identify necessary prefixes for output
-            unique_prefixes = subset["expected_prefix"].unique().to_list()
-            prefix_regex = re.compile(rf"^({'|'.join(unique_prefixes)}).*")
+            # identify base prefixes (experiment + mode without specific lanes)
+            base_prefixes = subset["expected_prefix"].unique().to_list()
+            # Create regex to match any lane number for these base prefixes
+            base_pattern = "|".join([re.escape(prefix) for prefix in base_prefixes])
+            prefix_regex = re.compile(rf"^({base_pattern})\d+.*")
 
             # determine data regex
             crispr_regex = re.compile(r".+_CRISPR_Lane.+")
@@ -320,82 +322,79 @@ def aggregate_data(
                 .to_list()
             )
 
-            n_matches = 0
+            # Discover all directories that match our experiment/mode patterns
+            matched_directories = []
             for root, _dirs, _files in os.walk(cyto_outdir, followlinks=True):
                 basename = os.path.basename(root)
                 if prefix_regex.search(basename):
-                    print(f"Processing {basename}...", file=sys.stderr)
+                    matched_directories.append((root, basename))
 
-                    lane_regex_match = lane_regex.search(basename)
-                    if lane_regex_match:
-                        lane_id = lane_regex_match.group(1)
-                    else:
-                        raise ValueError(f"Invalid basename: {basename}")
+            # Process all discovered directories
+            for root, basename in matched_directories:
+                print(f"Processing {basename}...", file=sys.stderr)
 
-                    # process crispr data
-                    if crispr_regex.match(basename):
-                        # Load in assignments
-                        local_assignments_list = (
-                            _load_assignments_for_experiment_sample(
-                                root=root,
-                                crispr_bcs=crispr_bcs,
-                                lane_id=lane_id,
-                                experiment=e,
-                                sample=s,
-                            )
-                        )
-                        assignments_list.extend(local_assignments_list)
+                lane_regex_match = lane_regex.search(basename)
+                if lane_regex_match:
+                    lane_id = lane_regex_match.group(1)
+                else:
+                    raise ValueError(f"Invalid basename: {basename}")
 
-                        # Load in crispr anndata
-                        local_crispr_adata_list = (
-                            _load_crispr_anndata_for_experiment_sample(
-                                root=root,
-                                crispr_bcs=crispr_bcs,
-                                lane_id=lane_id,
-                                experiment=e,
-                                sample=s,
-                            )
-                        )
-                        crispr_adata_list.extend(local_crispr_adata_list)
+                # process crispr data
+                if crispr_regex.match(basename):
+                    # Load in assignments
+                    local_assignments_list = _load_assignments_for_experiment_sample(
+                        root=root,
+                        crispr_bcs=crispr_bcs,
+                        lane_id=lane_id,
+                        experiment=e,
+                        sample=s,
+                    )
+                    assignments_list.extend(local_assignments_list)
 
-                        # process barcode-level read statistics
-                        local_reads_list = _load_reads_for_experiment_sample(
+                    # Load in crispr anndata
+                    local_crispr_adata_list = (
+                        _load_crispr_anndata_for_experiment_sample(
                             root=root,
-                            bcs=crispr_bcs,
-                            lane_id=lane_id,
-                            experiment=e,
-                            sample=s,
-                            mode="crispr",
-                        )
-                        reads_list.extend(local_reads_list)
-
-                    # process gex data
-                    elif gex_regex.search(basename):
-                        local_gex_list = _load_gex_anndata_for_experiment_sample(
-                            root=root,
-                            gex_bcs=gex_bcs,
+                            crispr_bcs=crispr_bcs,
                             lane_id=lane_id,
                             experiment=e,
                             sample=s,
                         )
-                        gex_adata_list.extend(local_gex_list)
+                    )
+                    crispr_adata_list.extend(local_crispr_adata_list)
 
-                        # process barcode-level read statistics
-                        local_reads_list = _load_reads_for_experiment_sample(
-                            root=root,
-                            bcs=gex_bcs,
-                            lane_id=lane_id,
-                            experiment=e,
-                            sample=s,
-                            mode="gex",
-                        )
-                        reads_list.extend(local_reads_list)
+                    # process barcode-level read statistics
+                    local_reads_list = _load_reads_for_experiment_sample(
+                        root=root,
+                        bcs=crispr_bcs,
+                        lane_id=lane_id,
+                        experiment=e,
+                        sample=s,
+                        mode="crispr",
+                    )
+                    reads_list.extend(local_reads_list)
 
-                    n_matches += 1
+                # process gex data
+                elif gex_regex.search(basename):
+                    local_gex_list = _load_gex_anndata_for_experiment_sample(
+                        root=root,
+                        gex_bcs=gex_bcs,
+                        lane_id=lane_id,
+                        experiment=e,
+                        sample=s,
+                    )
+                    gex_adata_list.extend(local_gex_list)
 
-                    # finish on expected number of prefixes (don't recurse too deeply)
-                    if n_matches == len(unique_prefixes):
-                        break
+                    # process barcode-level read statistics
+                    local_reads_list = _load_reads_for_experiment_sample(
+                        root=root,
+                        bcs=gex_bcs,
+                        lane_id=lane_id,
+                        experiment=e,
+                        sample=s,
+                        mode="gex",
+                    )
+                    reads_list.extend(local_reads_list)
 
         sample_outdir = os.path.join(outdir, s)
         os.makedirs(sample_outdir, exist_ok=True)
