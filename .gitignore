@@ -209,3 +209,5 @@ __marimo__/
 # pycyto
 sequences/*
 pycyto_out/*
+cyto_out*
+aggr*
