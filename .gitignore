@@ -211,3 +211,4 @@ sequences/*
 pycyto_out/*
 cyto_out*
 aggr*
+examples/ngn2_agg.json
