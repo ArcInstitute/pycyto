@@ -211,10 +211,9 @@ def _parse_barcodes(entry: dict, nlib: int) -> list[list[str]]:
 
 def _pull_feature_path(feature: str, libraries: dict) -> str:
     path = libraries[feature]
-    if os.path.exists(path):
-        return path
-    else:
-        raise FileNotFoundError(f"Feature path not found: {path}")
+    if not os.path.exists(path):
+        print(f"Warning: Feature path not found: {path}")
+    return path
 
 
 def _assign_probeset(barcode: str) -> str:
