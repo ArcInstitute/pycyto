@@ -10,7 +10,6 @@ EXPECTED_SAMPLE_KEYS = [
     "experiment",
     "sample",
     "mode",
-    "lane",
     "barcodes",
     "features",
 ]
@@ -42,19 +41,6 @@ def _parse_mode(entry: dict) -> list[str]:
         if libmode not in KNOWN_LIBMODES:
             raise ValueError(f"Invalid mode {libmode} found: {libmode}")
         return [libmode]
-
-
-def _parse_gem_lanes(entry: dict) -> list[int]:
-    gem_lanes = entry["lane"]
-    if "|" in gem_lanes:
-        lanes = gem_lanes.split("|")
-        if not all(lane.isdigit() for lane in lanes):
-            raise ValueError(f"Invalid lane found in gem_lanes: {gem_lanes}")
-        return [int(lane) for lane in lanes]
-    else:
-        if not gem_lanes.isdigit():
-            raise ValueError(f"Invalid lane found in gem_lanes: {gem_lanes}")
-        return [int(gem_lanes)]
 
 
 def _validate_component_barcode(barcode: str):
@@ -133,35 +119,28 @@ def parse_config(config_path: str):
         _validate_keys(entry)
         libmode = _parse_mode(entry)
         nlib = len(libmode)
-        gem_lanes = _parse_gem_lanes(entry)
         barcodes = _parse_barcodes(entry, nlib)
         features = _parse_features(entry, nlib, config["libraries"].keys())
-        for lane in gem_lanes:
-            for bc_idx, bc in enumerate(barcodes):
-                for mode, bc_component, mode_feature in zip(libmode, bc, features):
-                    dataframe.append(
-                        {
-                            "experiment": entry["experiment"],
-                            "sample": entry["sample"],
-                            "mode": mode,
-                            "lane": lane,
-                            "bc_component": bc_component,
-                            "bc_idx": bc_idx,
-                            "features": mode_feature,
-                            "probe_set": _assign_probeset(bc_component),
-                            "feature_path": _pull_feature_path(
-                                mode_feature, config["libraries"]
-                            ),
-                        }
-                    )
+        for bc_idx, bc in enumerate(barcodes):
+            for mode, bc_component, mode_feature in zip(libmode, bc, features):
+                dataframe.append(
+                    {
+                        "experiment": entry["experiment"],
+                        "sample": entry["sample"],
+                        "mode": mode,
+                        "bc_component": bc_component,
+                        "bc_idx": bc_idx,
+                        "features": mode_feature,
+                        "probe_set": _assign_probeset(bc_component),
+                        "feature_path": _pull_feature_path(
+                            mode_feature, config["libraries"]
+                        ),
+                    }
+                )
 
     return pl.DataFrame(dataframe).with_columns(
         expected_prefix=(
-            pl.col("experiment")
-            + "_"
-            + pl.col("mode").str.to_uppercase()
-            + "_Lane"
-            + pl.col("lane").cast(pl.String)
+            pl.col("experiment") + "_" + pl.col("mode").str.to_uppercase() + "_Lane"
         )
     )
 
@@ -177,16 +156,12 @@ def determine_cyto_runs(sample_sheet: pl.DataFrame) -> pl.DataFrame:
     """
     return (
         sample_sheet.select(
-            ["name", "mode", "lane", "features", "probe_set", "feature_path"]
+            ["experiment", "mode", "features", "probe_set", "feature_path"]
         )
         .unique()
         .with_columns(
-            (
-                pl.col("name")
-                + "_Lane"
-                + pl.col("lane").cast(pl.String)
-                + "_"
-                + pl.col("mode").str.to_uppercase()
-            ).alias("expected_prefix")
+            (pl.col("experiment") + "_" + pl.col("mode").str.to_uppercase()).alias(
+                "expected_prefix"
+            )
         )
     )

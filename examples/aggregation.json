@@ -8,7 +8,6 @@
       "experiment": "20250806_Flex_3D_miniscreen2",
       "mode": "gex+crispr",
       "features": "GEX_PROBE_LIST+CRISPR_PROBE_LIST",
-      "lane": "1|2|3|4",
       "sample": "monoculture",
       "barcodes": "BC001+CR001"
     },
@@ -16,7 +15,6 @@
       "experiment": "20250806_Flex_3D_miniscreen2",
       "mode": "gex+crispr",
       "features": "GEX_PROBE_LIST+CRISPR_PROBE_LIST",
-      "lane": "1|2|3|4",
       "sample": "unsorted_coculture",
       "barcodes": "BC002+CR002|BC003+CR003"
     },
@@ -24,7 +22,6 @@
       "experiment": "20250806_Flex_3D_miniscreen2",
       "mode": "gex+crispr",
       "features": "GEX_PROBE_LIST+CRISPR_PROBE_LIST",
-      "lane": "1|2|3|4",
       "sample": "sorted_coculture",
       "barcodes": "BC004+CR004|BC005+CR005|BC006+CR006"
     }
