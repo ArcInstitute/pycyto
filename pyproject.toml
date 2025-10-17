@@ -32,5 +32,6 @@ pycyto = "pycyto.__main__:main"
 [dependency-groups]
 dev = [
     "marimo>=0.16.5",
+    "pytest>=8.4.2",
     "ruff>=0.12.9",
 ]

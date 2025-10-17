@@ -1,0 +1,43 @@
+{
+  "libraries": {
+    "GEX_PROBE_LIST": "./examples/gex_probes.tsv",
+    "CRISPR_PROBE_LIST": "./examples/crispr_guides.tsv"
+  },
+  "samples": [
+    {
+      "experiment": "VCI_0201_pilot1_2_20250905",
+      "mode": "gex+crispr",
+      "features": "GEX_PROBE_LIST+CRISPR_PROBE_LIST",
+      "sample": "ipsc_d0",
+      "barcodes": "BC1..4+CR1..4"
+    },
+    {
+      "experiment": "VCI_0201_pilot1_2_20250905",
+      "mode": "gex+crispr",
+      "features": "GEX_PROBE_LIST+CRISPR_PROBE_LIST",
+      "sample": "NPC_d3",
+      "barcodes": "BC5..7+CR5..7"
+    },
+    {
+      "experiment": "VCI_0201_pilot1_2_20250905",
+      "mode": "gex+crispr",
+      "features": "GEX_PROBE_LIST+CRISPR_PROBE_LIST",
+      "sample": "coculture_d21",
+      "barcodes": "BC8..12+CR8..12"
+    },
+    {
+      "experiment": "VCI_0201_pilot1_2_20250905",
+      "mode": "gex+crispr",
+      "features": "GEX_PROBE_LIST+CRISPR_PROBE_LIST",
+      "sample": "monoculture_d40",
+      "barcodes": "BC13+CR13"
+    },
+    {
+      "experiment": "VCI_0201_pilot1_2_20250905",
+      "mode": "gex+crispr",
+      "features": "GEX_PROBE_LIST+CRISPR_PROBE_LIST",
+      "sample": "coculture_d40",
+      "barcodes": "BC14..16+CR14..16"
+    }
+  ]
+}

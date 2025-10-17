@@ -312,6 +312,7 @@ def aggregate_data(
                 .select("bc_component")
                 .to_series()
                 .unique()
+                .sort()
                 .to_list()
             )
             crispr_bcs = (
@@ -319,8 +320,13 @@ def aggregate_data(
                 .select("bc_component")
                 .to_series()
                 .unique()
+                .sort()
                 .to_list()
             )
+            if len(gex_bcs) > 0:
+                print(f"Expecting GEX Barcodes: {gex_bcs}")
+            if len(crispr_bcs) > 0:
+                print(f"Expecting CRISPR Barcodes: {crispr_bcs}")
 
             # Discover all directories that match our experiment/mode patterns
             matched_directories = []
