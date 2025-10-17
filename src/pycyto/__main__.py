@@ -1,7 +1,40 @@
+import logging
+import sys
+
 import typer
 from typing_extensions import Annotated
 
 app = typer.Typer()
+
+
+def _setup_logging(verbose: bool = False):
+    """Set up logging for the aggregation workflow."""
+    log_level = logging.DEBUG if verbose else logging.INFO
+
+    # Create formatter
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    # Set up the main logger
+    logger = logging.getLogger("pycyto")
+    logger.setLevel(log_level)
+
+    # Remove existing handlers to avoid duplicates
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+
+    # Create console handler that outputs to stderr
+    console_handler = logging.StreamHandler(sys.stderr)
+    console_handler.setLevel(log_level)
+    console_handler.setFormatter(formatter)
+
+    # Add handler to logger
+    logger.addHandler(console_handler)
+
+    # Prevent propagation to root logger
+    logger.propagate = False
 
 
 @app.command()
@@ -73,8 +106,12 @@ def aggregate(
         str, typer.Argument(help="Path to output directory to write aggregated files")
     ],
     compress: Annotated[bool, typer.Option(help="Compress output files")] = False,
+    verbose: Annotated[bool, typer.Option(help="Enable verbose logging")] = False,
 ):
     """Aggregate cyto output files"""
+
+    # Set up logging
+    _setup_logging(verbose=verbose)
 
     from .aggregate import aggregate_data
     from .config import parse_config
