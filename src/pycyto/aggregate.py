@@ -237,7 +237,7 @@ def _process_gex_crispr_set_efficient(
     sample: str,
     compress: bool = False,
 ):
-    temp_dir = os.Path(tempfile.mkdtemp(prefix=f"pycyto_{sample}_"))
+    temp_dir = tempfile.mkdtemp(prefix=f"pycyto_{sample}_")
 
     try:
         # Prepare metadata (small, in-memory)
@@ -289,14 +289,14 @@ def _process_gex_crispr_set_efficient(
             ).merge(reads_pivot, left_index=True, right_index=True, how="left")
 
             # Write with obs modifications (X is still lazy/backed)
-            temp_path = temp_dir / f"gex_{i}.h5ad"
+            temp_path = os.path.join(temp_dir, f"gex_{i}.h5ad")
             gex_adata.write_h5ad(temp_path)
             gex_temp_paths.append(str(temp_path))
 
         # Process CRISPR
         crispr_temp_paths = []
         for i, crispr_adata in enumerate(crispr_adata_list):
-            temp_path = temp_dir / f"crispr_{i}.h5ad"
+            temp_path = os.path.join(temp_dir, f"crispr_{i}.h5ad")
             crispr_adata.write_h5ad(temp_path)
             crispr_temp_paths.append(str(temp_path))
 
