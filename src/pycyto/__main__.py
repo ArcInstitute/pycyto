@@ -107,6 +107,9 @@ def aggregate(
     ],
     compress: Annotated[bool, typer.Option(help="Compress output files")] = False,
     verbose: Annotated[bool, typer.Option(help="Enable verbose logging")] = False,
+    threads: Annotated[
+        int, typer.Option(help="Number of parallel threads to use [-1: all available]")
+    ] = -1,
 ):
     """Aggregate cyto output files"""
 
@@ -117,7 +120,9 @@ def aggregate(
     from .config import parse_config
 
     config = parse_config(config_path)
-    aggregate_data(config, cyto_outdir, outdir, compress=compress)
+    aggregate_data(
+        config, cyto_outdir, outdir, compress=compress, threads=threads, verbose=verbose
+    )
 
 
 @app.command()
