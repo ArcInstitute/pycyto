@@ -19,30 +19,35 @@ logger = logging.getLogger("pycyto.aggregate")
 def lazy_load_adata(path: str, obs_chunk: int = 4000) -> ad.AnnData:
     """Lazy load with X as Dask array.
 
-    Note: this does not load any additional data beyond the X(lazy) and obs(eager) and var(eager)
+    Note: Creates Dask array that reopens the file for each chunk.
     """
-
+    # Read metadata immediately (small)
     with h5py.File(path, "r") as f:
-        # Read X as sparse dataset, convert to Dask
-        sparse_ds = ad.io.sparse_dataset(f["X"])
-        X_dask = _sparse_dataset_as_dask(sparse_ds, obs_chunk)
-
-        # Read metadata
         obs = ad.io.read_elem(f["obs"])
         var = ad.io.read_elem(f["var"])
+
+    # Create Dask array that will reopen file for each chunk
+    X_dask = _sparse_dataset_as_dask_with_path(path, obs_chunk)
 
     return ad.AnnData(X=X_dask, obs=obs, var=var)
 
 
-# Helper from gist:
-#
-# https://gist.github.com/ivirshup/3fbe634b648304978ea77469b5d88961
-def _sparse_dataset_as_dask(sparse_ds, stride: int):
-    """Convert sparse dataset to Dask array."""
-    n_chunks, rem = divmod(sparse_ds.shape[0], stride)
+def _sparse_dataset_as_dask_with_path(path: str, stride: int):
+    """Convert sparse dataset to Dask array, reopening file for each chunk."""
 
-    def take_slice(x, idx):
-        return x[idx]
+    # Get shape first
+    with h5py.File(path, "r") as f:
+        sparse_ds = ad.io.sparse_dataset(f["X"])
+        shape = sparse_ds.shape
+        dtype = sparse_ds.dtype
+
+    n_chunks, rem = divmod(shape[0], stride)
+
+    def load_chunk(path: str, start: int, end: int):
+        """Load a chunk by reopening the file."""
+        with h5py.File(path, "r") as f:
+            sparse_ds = ad.io.sparse_dataset(f["X"])
+            return sparse_ds[start:end]
 
     class CSRCallable:
         def __new__(cls, shape, dtype):
@@ -58,9 +63,9 @@ def _sparse_dataset_as_dask(sparse_ds, stride: int):
     for i in range(n_chunks):
         chunks.append(
             da.from_delayed(
-                delayed(take_slice)(sparse_ds, slice(cur_pos, cur_pos + stride)),
-                dtype=sparse_ds.dtype,
-                shape=(stride, sparse_ds.shape[1]),
+                delayed(load_chunk)(path, cur_pos, cur_pos + stride),
+                dtype=dtype,
+                shape=(stride, shape[1]),
                 meta=CSRCallable,
             )
         )
@@ -69,9 +74,9 @@ def _sparse_dataset_as_dask(sparse_ds, stride: int):
     if rem:
         chunks.append(
             da.from_delayed(
-                delayed(take_slice)(sparse_ds, slice(cur_pos, sparse_ds.shape[0])),
-                dtype=sparse_ds.dtype,
-                shape=(rem, sparse_ds.shape[1]),
+                delayed(load_chunk)(path, cur_pos, shape[0]),
+                dtype=dtype,
+                shape=(rem, shape[1]),
                 meta=CSRCallable,
             )
         )
