@@ -2,6 +2,8 @@ import logging
 import multiprocessing as mp
 import os
 import re
+import shutil
+import tempfile
 from functools import partial
 
 import anndata as ad
@@ -224,6 +226,142 @@ def _process_gex_crispr_set(
         sample_outdir=sample_outdir,
         sample=sample,
     )
+
+
+def _process_gex_crispr_set_efficient(
+    gex_adata_list: list[ad.AnnData],
+    crispr_adata_list: list[ad.AnnData],
+    assignments_list: list[pl.DataFrame],
+    reads_list: list[pl.DataFrame],
+    sample_outdir: str,
+    sample: str,
+    compress: bool = False,
+):
+    temp_dir = os.Path(tempfile.mkdtemp(prefix=f"pycyto_{sample}_"))
+
+    try:
+        # Prepare metadata (small, in-memory)
+        assignments = pl.concat(assignments_list, how="vertical_relaxed").unique()
+        reads_df = pl.concat(reads_list, how="vertical_relaxed").unique()
+
+        # Handle barcode conversion
+        if assignments["cell"].str.contains("CR").any():
+            assignments = assignments.with_columns(
+                match_barcode=pl.col("cell") + "-" + pl.col("lane_id").cast(pl.String)
+            ).with_columns(pl.col("match_barcode").str.replace("CR", "BC"))
+            reads_df = reads_df.with_columns(
+                match_barcode=pl.col("cell_id")
+                + "-"
+                + pl.col("lane_id").cast(pl.String)
+            ).with_columns(pl.col("match_barcode").str.replace("CR", "BC"))
+            for c_adata in crispr_adata_list:
+                c_adata.obs.index = c_adata.obs.index.str.replace("CR", "BC")
+        else:
+            assignments = assignments.with_columns(
+                match_barcode=pl.col("cell") + "-" + pl.col("lane_id").cast(pl.String)
+            )
+            reads_df = reads_df.with_columns(
+                match_barcode=pl.col("cell_id")
+                + "-"
+                + pl.col("lane_id").cast(pl.String)
+            )
+
+        assignment_data = (
+            assignments.select(["match_barcode", "assignment", "umis", "moi"])
+            .to_pandas()
+            .set_index("match_barcode")
+        )
+
+        reads_pivot = (
+            reads_df.select(["match_barcode", "mode", "n_reads", "n_umis"])
+            .pivot(index="match_barcode", on="mode", values=["n_reads", "n_umis"])
+            .fill_null(0)
+            .to_pandas()
+            .set_index("match_barcode")
+        )
+
+        # Process GEX: modify obs and write to temp
+        gex_temp_paths = []
+        for i, gex_adata in enumerate(gex_adata_list):
+            # Modify obs in memory
+            gex_adata.obs = gex_adata.obs.merge(
+                assignment_data, left_index=True, right_index=True, how="left"
+            ).merge(reads_pivot, left_index=True, right_index=True, how="left")
+
+            # Write with obs modifications (X is still lazy/backed)
+            temp_path = temp_dir / f"gex_{i}.h5ad"
+            gex_adata.write_h5ad(temp_path)
+            gex_temp_paths.append(str(temp_path))
+
+        # Process CRISPR
+        crispr_temp_paths = []
+        for i, crispr_adata in enumerate(crispr_adata_list):
+            temp_path = temp_dir / f"crispr_{i}.h5ad"
+            crispr_adata.write_h5ad(temp_path)
+            crispr_temp_paths.append(str(temp_path))
+
+        # Concatenate on disk (memory efficient)
+        logger.info(f"[{sample}] - Concatenating GEX on disk")
+        gex_output = os.path.join(sample_outdir, f"{sample}_gex_temp.h5ad")
+        ad.experimental.concat_on_disk(gex_temp_paths, str(gex_output), join="outer")
+
+        logger.info(f"[{sample}] - Concatenating CRISPR on disk")
+        crispr_output = os.path.join(sample_outdir, f"{sample}_crispr_temp.h5ad")
+        ad.experimental.concat_on_disk(
+            crispr_temp_paths, str(crispr_output), join="outer"
+        )
+
+        # Filter CRISPR to GEX barcodes
+        logger.info(f"[{sample}] - Filtering CRISPR to GEX barcodes")
+        gex_backed = ad.read_h5ad(gex_output, backed="r")
+        crispr_backed = ad.read_h5ad(crispr_output, backed="r")
+
+        gex_backed.obs["dummy"] = (
+            gex_backed.obs.index
+            + "-"
+            + gex_backed.obs["sample"]
+            + "-"
+            + gex_backed.obs["experiment"]
+        )
+        crispr_backed.obs["dummy"] = (
+            crispr_backed.obs.index
+            + "-"
+            + crispr_backed.obs["sample"]
+            + "-"
+            + crispr_backed.obs["experiment"]
+        )
+
+        mask = crispr_backed.obs["dummy"].isin(gex_backed.obs["dummy"])
+        filtered_crispr = crispr_backed[mask].to_memory()
+        filtered_crispr.obs = filtered_crispr.obs.drop(columns=["dummy"])
+
+        # Write final outputs
+        final_crispr_output = os.path.join(sample_outdir, f"{sample}_crispr.h5ad")
+        filtered_crispr.write_h5ad(
+            final_crispr_output, compression="gzip" if compress else None
+        )
+
+        # Apply compression to GEX if needed
+        if compress:
+            final_gex_output = os.path.join(sample_outdir, f"{sample}_gex.h5ad")
+            gex_backed_reload = ad.read_h5ad(gex_output, backed="r")
+            gex_backed_reload.write_h5ad(final_gex_output, compression="gzip")
+            gex_output.unlink()
+        else:
+            # Just rename
+            final_gex_output = os.path.join(sample_outdir, f"{sample}_gex.h5ad")
+            gex_output.rename(final_gex_output)
+
+        crispr_output.unlink()  # Remove unfiltered temp
+
+        logger.info(f"[{sample}] - Successfully wrote final outputs")
+
+        # Write metadata
+        _write_assignments_parquet(assignments, sample_outdir, sample)
+        _write_reads_parquet(reads_df, sample_outdir, sample)
+
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def _load_assignments_for_experiment_sample(
@@ -498,7 +636,7 @@ def process_sample(
         logger.info(
             f"[{sample}] - Processing combined GEX + CRISPR data for sample '{sample}'"
         )
-        _process_gex_crispr_set(
+        _process_gex_crispr_set_efficient(
             gex_adata_list=gex_adata_list,
             crispr_adata_list=crispr_adata_list,
             assignments_list=assignments_list,
