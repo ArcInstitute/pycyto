@@ -6,10 +6,10 @@ from functools import partial
 
 import anndata as ad
 import anndata.experimental as ade
-import dask as da
+import dask.array as da
 import h5py
 import polars as pl
-from dask.delayed import delayed
+from dask import delayed
 from scipy import sparse
 
 # Set up logger for aggregation
