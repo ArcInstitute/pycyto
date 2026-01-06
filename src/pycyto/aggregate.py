@@ -24,7 +24,7 @@ def lazy_load_adata(path: str, obs_chunk: int = 4000) -> ad.AnnData:
 
     with h5py.File(path, "r") as f:
         # Read X as sparse dataset, convert to Dask
-        sparse_ds = ad.experimental.sparse_dataset(f["X"])
+        sparse_ds = ad.io.sparse_dataset(f["X"])
         X_dask = _sparse_dataset_as_dask(sparse_ds, obs_chunk)
 
         # Read metadata
