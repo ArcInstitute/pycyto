@@ -619,7 +619,8 @@ def aggregate_data(
         outdir=outdir,
         compress=compress,
     )
-    with mp.Pool(threads, initializer=init_worker) as pool:
+    ctx = mp.get_context("spawn")
+    with ctx.Pool(threads, initializer=init_worker) as pool:
         for _ in pool.imap_unordered(partial_func, unique_samples):
             pass
 
