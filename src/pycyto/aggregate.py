@@ -173,13 +173,13 @@ def _process_gex_crispr_set(
     logger.debug(
         f"[{sample}] - Concatenating {len(gex_adata_list)} GEX anndata objects"
     )
-    gex_adata = ade.AnnCollection(gex_adata_list)
+    gex_adata = ad.concat(gex_adata_list)
     logger.debug(f"[{sample}] - Final GEX data shape: {gex_adata.shape}")
 
     logger.debug(
         f"[{sample}] - Concatenating {len(crispr_adata_list)} CRISPR anndata objects"
     )
-    crispr_adata = ade.AnnCollection(crispr_adata_list)
+    crispr_adata = ad.concat(crispr_adata_list)
     logger.debug(f"[{sample}] - Final CRISPR data shape: {crispr_adata.shape}")
 
     logger.debug(
@@ -572,7 +572,7 @@ def process_sample(
         logger.debug(
             f"[{sample}] - Concatenating {len(gex_adata_list)} GEX anndata objects"
         )
-        gex_adata = ade.AnnCollection(gex_adata_list)
+        gex_adata = ad.concat(gex_adata_list)
         logger.debug(f"[{sample}] - Final GEX data shape: {gex_adata.shape}")
 
         logger.info(f"[{sample}] - Writing GEX data...")
@@ -615,7 +615,7 @@ def process_sample(
         )
 
         logger.info(f"[{sample}] - Writing CRISPR anndata...")
-        crispr_adata = ade.AnnCollection(crispr_adata_list)
+        crispr_adata = ad.concat(crispr_adata_list)
         logger.debug(f"[{sample}] - CRISPR data shape: {crispr_adata.shape}")
         _write_h5ad(
             adata=crispr_adata,
