@@ -3,10 +3,19 @@ import os
 import re
 
 import anndata as ad
+import anndata.experimental as ade
 import polars as pl
 
 # Set up logger for aggregation
 logger = logging.getLogger("pycyto.aggregate")
+
+
+def lazy_load_adata(path: str) -> ad.AnnData:
+    """Lazy load the anndata object from the path - notably load in the obs and var as well."""
+    adata = ade.read_lazy(path)
+    adata.obs = adata.obs.to_memory()
+    adata.var = adata.var.to_memory()
+    return adata
 
 
 def _write_h5ad(
@@ -251,7 +260,7 @@ def _load_gex_anndata_for_experiment_sample(
             expected_gex_adata_dir, f"{gex_bc}.filt.h5ad"
         )
         if os.path.exists(expected_gex_adata_path):
-            bc_adata = ad.read_h5ad(expected_gex_adata_path)
+            bc_adata = lazy_load_adata(expected_gex_adata_path)
             bc_adata.obs["sample"] = sample
             bc_adata.obs["experiment"] = experiment
             bc_adata.obs["lane_id"] = lane_id
@@ -279,7 +288,7 @@ def _load_crispr_anndata_for_experiment_sample(
             expected_crispr_adata_dir, f"{crispr_bc}.h5ad"
         )
         if os.path.exists(expected_crispr_adata_path):
-            bc_adata = ad.read_h5ad(expected_crispr_adata_path)
+            bc_adata = lazy_load_adata(expected_crispr_adata_path)
             bc_adata.obs["sample"] = sample
             bc_adata.obs["experiment"] = experiment
             bc_adata.obs["lane_id"] = lane_id
