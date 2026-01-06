@@ -7,7 +7,6 @@ from functools import partial
 import anndata as ad
 import anndata.experimental as ade
 import polars as pl
-from pyarrow.fs import initialize_s3
 
 # Set up logger for aggregation
 logger = logging.getLogger("pycyto.aggregate")
@@ -573,25 +572,6 @@ def process_sample(
     pass
 
 
-def init_worker():
-    """Initialize logging in each worker process"""
-    import logging
-    import sys
-
-    logger = logging.getLogger("pycyto.aggregate")
-
-    # Clear any existing handlers
-    logger.handlers.clear()
-
-    # Add a handler that writes to stderr
-    handler = logging.StreamHandler(sys.stderr)
-    handler.setFormatter(
-        logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    )
-    logger.addHandler(handler)
-    logger.setLevel(logging.DEBUG)
-
-
 def aggregate_data(
     config: pl.DataFrame,
     cyto_outdir: str,
@@ -610,6 +590,9 @@ def aggregate_data(
     # set to maximum available threads if not specified
     if threads == -1:
         threads = mp.cpu_count()
+
+    # Limit the number of threads to the number of samples
+    threads = min(threads, len(unique_samples))
     logger.info(f"Using {threads} parallel threads")
 
     partial_func = partial(
@@ -620,9 +603,8 @@ def aggregate_data(
         compress=compress,
     )
     ctx = mp.get_context("spawn")
-    with ctx.Pool(threads, initializer=init_worker) as pool:
-        for _ in pool.imap_unordered(partial_func, unique_samples):
-            pass
+    with ctx.Pool(threads) as pool:
+        pool.map(partial_func, unique_samples)
 
     logger.info(
         f"Aggregation workflow completed successfully. Processed {len(unique_samples)} samples."
