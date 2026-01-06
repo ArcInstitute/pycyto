@@ -241,11 +241,14 @@ def _process_gex_crispr_set_efficient(
 
     try:
         # Prepare metadata (small, in-memory)
+        logger.debug(f"[{sample}] - Concatenating assignments...")
         assignments = pl.concat(assignments_list, how="vertical_relaxed").unique()
+        logger.debug(f"[{sample}] - Concatenating reads...")
         reads_df = pl.concat(reads_list, how="vertical_relaxed").unique()
 
         # Handle barcode conversion
         if assignments["cell"].str.contains("CR").any():
+            logger.debug(f"[{sample}] - Converting barcodes...")
             assignments = assignments.with_columns(
                 match_barcode=pl.col("cell") + "-" + pl.col("lane_id").cast(pl.String)
             ).with_columns(pl.col("match_barcode").str.replace("CR", "BC"))
@@ -257,6 +260,7 @@ def _process_gex_crispr_set_efficient(
             for c_adata in crispr_adata_list:
                 c_adata.obs.index = c_adata.obs.index.str.replace("CR", "BC")
         else:
+            logger.debug(f"[{sample}] - No barcode conversion needed.")
             assignments = assignments.with_columns(
                 match_barcode=pl.col("cell") + "-" + pl.col("lane_id").cast(pl.String)
             )
@@ -283,6 +287,9 @@ def _process_gex_crispr_set_efficient(
         # Process GEX: modify obs and write to temp
         gex_temp_paths = []
         for i, gex_adata in enumerate(gex_adata_list):
+            logger.debug(
+                f"[{sample}] - Creating tempfile .obs on disk for GEX {i} / {len(gex_adata_list)}"
+            )
             # Modify obs in memory
             gex_adata.obs = gex_adata.obs.merge(
                 assignment_data, left_index=True, right_index=True, how="left"
@@ -296,6 +303,9 @@ def _process_gex_crispr_set_efficient(
         # Process CRISPR
         crispr_temp_paths = []
         for i, crispr_adata in enumerate(crispr_adata_list):
+            logger.debug(
+                f"[{sample}] - Creating tempfile .obs on disk for CRISPR {i} / {len(crispr_adata_list)}"
+            )
             temp_path = os.path.join(temp_dir, f"crispr_{i}.h5ad")
             crispr_adata.write_h5ad(temp_path)
             crispr_temp_paths.append(str(temp_path))
