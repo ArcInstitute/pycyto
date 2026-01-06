@@ -620,7 +620,8 @@ def aggregate_data(
         compress=compress,
     )
     with mp.Pool(threads, initializer=init_worker) as pool:
-        pool.imap_unordered(partial_func, unique_samples)
+        for _ in pool.imap_unordered(partial_func, unique_samples):
+            pass
 
     logger.info(
         f"Aggregation workflow completed successfully. Processed {len(unique_samples)} samples."
