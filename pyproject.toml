@@ -1,6 +1,6 @@
 [project]
 name = "pycyto"
-version = "0.1.10"
+version = "0.1.11"
 description = "Python utilities used by cyto"
 license = "MIT"
 readme = "README.md"
