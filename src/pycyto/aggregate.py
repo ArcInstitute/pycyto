@@ -94,7 +94,7 @@ def _filter_crispr_adata_to_gex_barcodes(
         + "-"
         + crispr_adata.obs["experiment"]
     )
-    mask = crispr_adata.obs["dummy"].isin(gex_adata.obs["dummy"])
+    mask = crispr_adata.obs["dummy"].isin(gex_adata.obs["dummy"])  # type: ignore
     gex_adata.obs.drop(columns=["dummy"], inplace=True)  # type: ignore
     crispr_adata.obs.drop(columns=["dummy"], inplace=True)  # type: ignore
     return crispr_adata[mask]
@@ -330,6 +330,228 @@ def _load_reads_for_experiment_sample(
     return reads_list
 
 
+def process_sample(
+    sample: str,
+    config: pl.DataFrame,
+    cyto_outdir: str,
+    outdir: str,
+    compress: bool = False,
+):
+    unique_experiments = (
+        config.filter(pl.col("sample") == sample)["experiment"].unique().to_list()
+    )
+
+    gex_adata_list = []
+    crispr_adata_list = []
+    assignments_list = []
+    reads_list = []
+
+    for e in unique_experiments:
+        logger.info(f"Processing sample '{sample}' experiment '{e}'...")
+
+        subset = config.filter(pl.col("sample") == sample, pl.col("experiment") == e)
+
+        # identify base prefixes (experiment + mode without specific lanes)
+        base_prefixes = subset["expected_prefix"].unique().to_list()
+        # Create regex to match any lane number for these base prefixes
+        base_pattern = "|".join([re.escape(prefix) for prefix in base_prefixes])
+        prefix_regex = re.compile(rf"^({base_pattern})\d+.*")
+
+        # determine data regex
+        crispr_regex = re.compile(r".+_CRISPR_Lane.+")
+        gex_regex = re.compile(r".+_GEX_Lane.+")
+        lane_regex = re.compile(r"_Lane(\d+)")
+
+        gex_bcs = (
+            subset.filter(pl.col("mode") == "gex")
+            .select("bc_component")
+            .to_series()
+            .unique()
+            .sort()
+            .to_list()
+        )
+        crispr_bcs = (
+            subset.filter(pl.col("mode") == "crispr")
+            .select("bc_component")
+            .to_series()
+            .unique()
+            .sort()
+            .to_list()
+        )
+        if len(gex_bcs) > 0:
+            logger.info(f"Expecting GEX Barcodes: {gex_bcs}")
+        if len(crispr_bcs) > 0:
+            logger.info(f"Expecting CRISPR Barcodes: {crispr_bcs}")
+
+        # Discover all directories that match our experiment/mode patterns
+        matched_directories = []
+        for root, _dirs, _files in os.walk(cyto_outdir, followlinks=True):
+            basename = os.path.basename(root)
+            if prefix_regex.search(basename):
+                matched_directories.append((root, basename))
+
+        logger.debug(
+            f"Found {len(matched_directories)} matching directories for experiment '{e}'"
+        )
+
+        # Process all discovered directories
+        for root, basename in matched_directories:
+            logger.info(f"Processing directory: {basename}")
+
+            lane_regex_match = lane_regex.search(basename)
+            if lane_regex_match:
+                lane_id = lane_regex_match.group(1)
+            else:
+                raise ValueError(f"Invalid basename: {basename}")
+
+            # process crispr data
+            if crispr_regex.match(basename):
+                # Load in assignments
+                logger.debug(f"Loading CRISPR assignments from {basename}")
+                local_assignments_list = _load_assignments_for_experiment_sample(
+                    root=root,
+                    crispr_bcs=crispr_bcs,
+                    lane_id=lane_id,
+                    experiment=e,
+                    sample=sample,
+                )
+                assignments_list.extend(local_assignments_list)
+                logger.debug(
+                    f"Loaded {len(local_assignments_list)} assignment files from {basename}"
+                )
+
+                # Load in crispr anndata
+                logger.debug(f"Loading CRISPR anndata from {basename}")
+                local_crispr_adata_list = _load_crispr_anndata_for_experiment_sample(
+                    root=root,
+                    crispr_bcs=crispr_bcs,
+                    lane_id=lane_id,
+                    experiment=e,
+                    sample=sample,
+                )
+                crispr_adata_list.extend(local_crispr_adata_list)
+                logger.debug(
+                    f"Loaded {len(local_crispr_adata_list)} CRISPR anndata files from {basename}"
+                )
+
+                # process barcode-level read statistics
+                logger.debug(f"Loading CRISPR read statistics from {basename}")
+                local_reads_list = _load_reads_for_experiment_sample(
+                    root=root,
+                    bcs=crispr_bcs,
+                    lane_id=lane_id,
+                    experiment=e,
+                    sample=sample,
+                    mode="crispr",
+                )
+                reads_list.extend(local_reads_list)
+
+            # process gex data
+            elif gex_regex.search(basename):
+                logger.debug(f"Loading GEX anndata from {basename}")
+                local_gex_list = _load_gex_anndata_for_experiment_sample(
+                    root=root,
+                    gex_bcs=gex_bcs,
+                    lane_id=lane_id,
+                    experiment=e,
+                    sample=sample,
+                )
+                gex_adata_list.extend(local_gex_list)
+                logger.debug(
+                    f"Loaded {len(local_gex_list)} GEX anndata files from {basename}"
+                )
+
+                # process barcode-level read statistics
+                logger.debug(f"Loading GEX read statistics from {basename}")
+                local_reads_list = _load_reads_for_experiment_sample(
+                    root=root,
+                    bcs=gex_bcs,
+                    lane_id=lane_id,
+                    experiment=e,
+                    sample=sample,
+                    mode="gex",
+                )
+                reads_list.extend(local_reads_list)
+
+    sample_outdir = os.path.join(outdir, sample)
+    os.makedirs(sample_outdir, exist_ok=True)
+    logger.debug(f"Created output directory: {sample_outdir}")
+
+    # CRISPR + GEX case
+    if len(gex_adata_list) > 0 and len(assignments_list) > 0:
+        logger.info(f"Processing combined GEX + CRISPR data for sample '{sample}'")
+        _process_gex_crispr_set(
+            gex_adata_list=gex_adata_list,
+            crispr_adata_list=crispr_adata_list,
+            assignments_list=assignments_list,
+            reads_list=reads_list,
+            sample_outdir=sample_outdir,
+            sample=sample,
+            compress=compress,
+        )
+
+    elif len(gex_adata_list) > 0:
+        logger.info(f"Processing GEX-only data for sample '{sample}'")
+        logger.debug(f"Concatenating {len(gex_adata_list)} GEX anndata objects")
+        gex_adata = ad.concat(gex_adata_list, join="outer")
+        logger.debug(f"Final GEX data shape: {gex_adata.shape}")
+
+        logger.info("Writing GEX data...")
+        _write_h5ad(
+            adata=gex_adata,
+            sample_outdir=sample_outdir,
+            sample=sample,
+            compress=compress,
+            mode="gex",
+        )
+
+        logger.info("Writing reads data...")
+        reads_df = pl.concat(reads_list, how="vertical_relaxed").unique()
+        logger.debug(f"Reads data shape: {reads_df.shape}")
+        _write_reads_parquet(
+            reads_df=reads_df,
+            sample_outdir=sample_outdir,
+            sample=sample,
+        )
+
+    elif len(assignments_list) > 0:
+        logger.info(f"Processing CRISPR-only data for sample '{sample}'")
+
+        logger.info("Writing assignments data...")
+        assignments = pl.concat(assignments_list, how="vertical_relaxed").unique()
+        logger.debug(f"Assignments data shape: {assignments.shape}")
+        _write_assignments_parquet(
+            assignments=assignments,
+            sample_outdir=sample_outdir,
+            sample=sample,
+        )
+
+        logger.info("Writing reads data...")
+        reads_df = pl.concat(reads_list, how="vertical_relaxed").unique()
+        logger.debug(f"Reads data shape: {reads_df.shape}")
+        _write_reads_parquet(
+            reads_df=reads_df,
+            sample_outdir=sample_outdir,
+            sample=sample,
+        )
+
+        logger.info("Writing CRISPR anndata...")
+        crispr_adata = ad.concat(crispr_adata_list, join="outer")
+        logger.debug(f"CRISPR data shape: {crispr_adata.shape}")
+        _write_h5ad(
+            adata=crispr_adata,
+            sample_outdir=sample_outdir,
+            sample=sample,
+            compress=compress,
+            mode="crispr",
+        )
+
+    else:
+        logger.warning(f"No data found to process for sample '{sample}'")
+
+    pass
+
+
 def aggregate_data(
     config: pl.DataFrame, cyto_outdir: str, outdir: str, compress: bool = False
 ):
@@ -342,219 +564,13 @@ def aggregate_data(
     )
 
     for s in unique_samples:
-        unique_experiments = (
-            config.filter(pl.col("sample") == s)["experiment"].unique().to_list()
+        process_sample(
+            sample=s,
+            config=config,
+            cyto_outdir=cyto_outdir,
+            outdir=outdir,
+            compress=compress,
         )
-
-        gex_adata_list = []
-        crispr_adata_list = []
-        assignments_list = []
-        reads_list = []
-
-        for e in unique_experiments:
-            logger.info(f"Processing sample '{s}' experiment '{e}'...")
-
-            subset = config.filter(pl.col("sample") == s, pl.col("experiment") == e)
-
-            # identify base prefixes (experiment + mode without specific lanes)
-            base_prefixes = subset["expected_prefix"].unique().to_list()
-            # Create regex to match any lane number for these base prefixes
-            base_pattern = "|".join([re.escape(prefix) for prefix in base_prefixes])
-            prefix_regex = re.compile(rf"^({base_pattern})\d+.*")
-
-            # determine data regex
-            crispr_regex = re.compile(r".+_CRISPR_Lane.+")
-            gex_regex = re.compile(r".+_GEX_Lane.+")
-            lane_regex = re.compile(r"_Lane(\d+)")
-
-            gex_bcs = (
-                subset.filter(pl.col("mode") == "gex")
-                .select("bc_component")
-                .to_series()
-                .unique()
-                .sort()
-                .to_list()
-            )
-            crispr_bcs = (
-                subset.filter(pl.col("mode") == "crispr")
-                .select("bc_component")
-                .to_series()
-                .unique()
-                .sort()
-                .to_list()
-            )
-            if len(gex_bcs) > 0:
-                logger.info(f"Expecting GEX Barcodes: {gex_bcs}")
-            if len(crispr_bcs) > 0:
-                logger.info(f"Expecting CRISPR Barcodes: {crispr_bcs}")
-
-            # Discover all directories that match our experiment/mode patterns
-            matched_directories = []
-            for root, _dirs, _files in os.walk(cyto_outdir, followlinks=True):
-                basename = os.path.basename(root)
-                if prefix_regex.search(basename):
-                    matched_directories.append((root, basename))
-
-            logger.debug(
-                f"Found {len(matched_directories)} matching directories for experiment '{e}'"
-            )
-
-            # Process all discovered directories
-            for root, basename in matched_directories:
-                logger.info(f"Processing directory: {basename}")
-
-                lane_regex_match = lane_regex.search(basename)
-                if lane_regex_match:
-                    lane_id = lane_regex_match.group(1)
-                else:
-                    raise ValueError(f"Invalid basename: {basename}")
-
-                # process crispr data
-                if crispr_regex.match(basename):
-                    # Load in assignments
-                    logger.debug(f"Loading CRISPR assignments from {basename}")
-                    local_assignments_list = _load_assignments_for_experiment_sample(
-                        root=root,
-                        crispr_bcs=crispr_bcs,
-                        lane_id=lane_id,
-                        experiment=e,
-                        sample=s,
-                    )
-                    assignments_list.extend(local_assignments_list)
-                    logger.debug(
-                        f"Loaded {len(local_assignments_list)} assignment files from {basename}"
-                    )
-
-                    # Load in crispr anndata
-                    logger.debug(f"Loading CRISPR anndata from {basename}")
-                    local_crispr_adata_list = (
-                        _load_crispr_anndata_for_experiment_sample(
-                            root=root,
-                            crispr_bcs=crispr_bcs,
-                            lane_id=lane_id,
-                            experiment=e,
-                            sample=s,
-                        )
-                    )
-                    crispr_adata_list.extend(local_crispr_adata_list)
-                    logger.debug(
-                        f"Loaded {len(local_crispr_adata_list)} CRISPR anndata files from {basename}"
-                    )
-
-                    # process barcode-level read statistics
-                    logger.debug(f"Loading CRISPR read statistics from {basename}")
-                    local_reads_list = _load_reads_for_experiment_sample(
-                        root=root,
-                        bcs=crispr_bcs,
-                        lane_id=lane_id,
-                        experiment=e,
-                        sample=s,
-                        mode="crispr",
-                    )
-                    reads_list.extend(local_reads_list)
-
-                # process gex data
-                elif gex_regex.search(basename):
-                    logger.debug(f"Loading GEX anndata from {basename}")
-                    local_gex_list = _load_gex_anndata_for_experiment_sample(
-                        root=root,
-                        gex_bcs=gex_bcs,
-                        lane_id=lane_id,
-                        experiment=e,
-                        sample=s,
-                    )
-                    gex_adata_list.extend(local_gex_list)
-                    logger.debug(
-                        f"Loaded {len(local_gex_list)} GEX anndata files from {basename}"
-                    )
-
-                    # process barcode-level read statistics
-                    logger.debug(f"Loading GEX read statistics from {basename}")
-                    local_reads_list = _load_reads_for_experiment_sample(
-                        root=root,
-                        bcs=gex_bcs,
-                        lane_id=lane_id,
-                        experiment=e,
-                        sample=s,
-                        mode="gex",
-                    )
-                    reads_list.extend(local_reads_list)
-
-        sample_outdir = os.path.join(outdir, s)
-        os.makedirs(sample_outdir, exist_ok=True)
-        logger.debug(f"Created output directory: {sample_outdir}")
-
-        # CRISPR + GEX case
-        if len(gex_adata_list) > 0 and len(assignments_list) > 0:
-            logger.info(f"Processing combined GEX + CRISPR data for sample '{s}'")
-            _process_gex_crispr_set(
-                gex_adata_list=gex_adata_list,
-                crispr_adata_list=crispr_adata_list,
-                assignments_list=assignments_list,
-                reads_list=reads_list,
-                sample_outdir=sample_outdir,
-                sample=s,
-                compress=compress,
-            )
-
-        elif len(gex_adata_list) > 0:
-            logger.info(f"Processing GEX-only data for sample '{s}'")
-            logger.debug(f"Concatenating {len(gex_adata_list)} GEX anndata objects")
-            gex_adata = ad.concat(gex_adata_list, join="outer")
-            logger.debug(f"Final GEX data shape: {gex_adata.shape}")
-
-            logger.info("Writing GEX data...")
-            _write_h5ad(
-                adata=gex_adata,
-                sample_outdir=sample_outdir,
-                sample=s,
-                compress=compress,
-                mode="gex",
-            )
-
-            logger.info("Writing reads data...")
-            reads_df = pl.concat(reads_list, how="vertical_relaxed").unique()
-            logger.debug(f"Reads data shape: {reads_df.shape}")
-            _write_reads_parquet(
-                reads_df=reads_df,
-                sample_outdir=sample_outdir,
-                sample=s,
-            )
-
-        elif len(assignments_list) > 0:
-            logger.info(f"Processing CRISPR-only data for sample '{s}'")
-
-            logger.info("Writing assignments data...")
-            assignments = pl.concat(assignments_list, how="vertical_relaxed").unique()
-            logger.debug(f"Assignments data shape: {assignments.shape}")
-            _write_assignments_parquet(
-                assignments=assignments,
-                sample_outdir=sample_outdir,
-                sample=s,
-            )
-
-            logger.info("Writing reads data...")
-            reads_df = pl.concat(reads_list, how="vertical_relaxed").unique()
-            logger.debug(f"Reads data shape: {reads_df.shape}")
-            _write_reads_parquet(
-                reads_df=reads_df,
-                sample_outdir=sample_outdir,
-                sample=s,
-            )
-
-            logger.info("Writing CRISPR anndata...")
-            crispr_adata = ad.concat(crispr_adata_list, join="outer")
-            logger.debug(f"CRISPR data shape: {crispr_adata.shape}")
-            _write_h5ad(
-                adata=crispr_adata,
-                sample_outdir=sample_outdir,
-                sample=s,
-                compress=compress,
-                mode="crispr",
-            )
-
-        else:
-            logger.warning(f"No data found to process for sample '{s}'")
 
     logger.info(
         f"Aggregation workflow completed successfully. Processed {len(unique_samples)} samples."
