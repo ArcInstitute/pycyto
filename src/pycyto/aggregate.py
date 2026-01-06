@@ -16,72 +16,80 @@ from scipy import sparse
 logger = logging.getLogger("pycyto.aggregate")
 
 
-def lazy_load_adata(path: str, obs_chunk: int = 4000) -> ad.AnnData:
-    """Lazy load with X as Dask array.
-
-    Note: Creates Dask array that reopens the file for each chunk.
-    """
-    # Read metadata immediately (small)
-    with h5py.File(path, "r") as f:
-        obs = ad.io.read_elem(f["obs"])
-        var = ad.io.read_elem(f["var"])
-
-    # Create Dask array that will reopen file for each chunk
-    X_dask = _sparse_dataset_as_dask_with_path(path, obs_chunk)
-
-    return ad.AnnData(X=X_dask, obs=obs, var=var)
+def lazy_load_adata(path: str) -> ad.AnnData:
+    """Lazy load anndata"""
+    adata = ade.read_lazy(path)
+    adata.obs = adata.obs.to_memory()
+    adata.var = adata.var.to_memory()
+    return adata
 
 
-def _sparse_dataset_as_dask_with_path(path: str, stride: int):
-    """Convert sparse dataset to Dask array, reopening file for each chunk."""
+# def lazy_load_adata(path: str, obs_chunk: int = 4000) -> ad.AnnData:
+#     """Lazy load with X as Dask array.
 
-    # Get shape first
-    with h5py.File(path, "r") as f:
-        sparse_ds = ad.io.sparse_dataset(f["X"])
-        shape = sparse_ds.shape
-        dtype = sparse_ds.dtype
+#     Note: Creates Dask array that reopens the file for each chunk.
+#     """
+#     # Read metadata immediately (small)
+#     with h5py.File(path, "r") as f:
+#         obs = ad.io.read_elem(f["obs"])
+#         var = ad.io.read_elem(f["var"])
 
-    n_chunks, rem = divmod(shape[0], stride)
+#     # Create Dask array that will reopen file for each chunk
+#     X_dask = _sparse_dataset_as_dask_with_path(path, obs_chunk)
 
-    def load_chunk(path: str, start: int, end: int):
-        """Load a chunk by reopening the file."""
-        with h5py.File(path, "r") as f:
-            sparse_ds = ad.io.sparse_dataset(f["X"])
-            return sparse_ds[start:end]
+#     return ad.AnnData(X=X_dask, obs=obs, var=var)
 
-    class CSRCallable:
-        def __new__(cls, shape, dtype):
-            if len(shape) == 0:
-                shape = (0, 0)
-            elif len(shape) == 1:
-                shape = (shape[0], 0)
-            return sparse.csr_matrix(shape, dtype=dtype)
 
-    chunks = []
-    cur_pos = 0
+# def _sparse_dataset_as_dask_with_path(path: str, stride: int):
+#     """Convert sparse dataset to Dask array, reopening file for each chunk."""
 
-    for i in range(n_chunks):
-        chunks.append(
-            da.from_delayed(
-                delayed(load_chunk)(path, cur_pos, cur_pos + stride),
-                dtype=dtype,
-                shape=(stride, shape[1]),
-                meta=CSRCallable,
-            )
-        )
-        cur_pos += stride
+#     # Get shape first
+#     with h5py.File(path, "r") as f:
+#         sparse_ds = ad.io.sparse_dataset(f["X"])
+#         shape = sparse_ds.shape
+#         dtype = sparse_ds.dtype
 
-    if rem:
-        chunks.append(
-            da.from_delayed(
-                delayed(load_chunk)(path, cur_pos, shape[0]),
-                dtype=dtype,
-                shape=(rem, shape[1]),
-                meta=CSRCallable,
-            )
-        )
+#     n_chunks, rem = divmod(shape[0], stride)
 
-    return da.concatenate(chunks, axis=0)
+#     def load_chunk(path: str, start: int, end: int):
+#         """Load a chunk by reopening the file."""
+#         with h5py.File(path, "r") as f:
+#             sparse_ds = ad.io.sparse_dataset(f["X"])
+#             return sparse_ds[start:end]
+
+#     class CSRCallable:
+#         def __new__(cls, shape, dtype):
+#             if len(shape) == 0:
+#                 shape = (0, 0)
+#             elif len(shape) == 1:
+#                 shape = (shape[0], 0)
+#             return sparse.csr_matrix(shape, dtype=dtype)
+
+#     chunks = []
+#     cur_pos = 0
+
+#     for i in range(n_chunks):
+#         chunks.append(
+#             da.from_delayed(
+#                 delayed(load_chunk)(path, cur_pos, cur_pos + stride),
+#                 dtype=dtype,
+#                 shape=(stride, shape[1]),
+#                 meta=CSRCallable,
+#             )
+#         )
+#         cur_pos += stride
+
+#     if rem:
+#         chunks.append(
+#             da.from_delayed(
+#                 delayed(load_chunk)(path, cur_pos, shape[0]),
+#                 dtype=dtype,
+#                 shape=(rem, shape[1]),
+#                 meta=CSRCallable,
+#             )
+#         )
+
+#     return da.concatenate(chunks, axis=0)
 
 
 def _write_h5ad(
@@ -239,7 +247,7 @@ def _process_gex_crispr_set(
     )
     logger.debug(f"[{sample}] - Reads pivot shape for merge: {reads_pivot.shape}")
 
-    gex_adata.obs = gex_adata.obs.merge(  # type: ignore
+    gex_adata.obs = gex_adata.obs.merge(
         assignment_data,
         left_index=True,
         right_index=True,
