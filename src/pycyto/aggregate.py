@@ -192,10 +192,12 @@ def _process_gex_crispr_set(
     )
     assignments = pl.concat(assignments_list, how="vertical_relaxed").unique()
     logger.debug(f"[{sample}] - Final assignments shape: {assignments.shape}")
+    del assignments_list  # clear duplicate memory
 
     logger.debug(f"[{sample}] - Concatenating {len(reads_list)} reads dataframes")
     reads_df = pl.concat(reads_list, how="vertical_relaxed").unique()
     logger.debug(f"[{sample}] - Final reads shape: {reads_df.shape}")
+    del reads_list  # clear duplicate memory
 
     if assignments["cell"].str.contains("CR").any():
         logger.debug(
@@ -248,6 +250,8 @@ def _process_gex_crispr_set(
         right_index=True,
         how="left",
     )
+    del assignment_data  # clear unused memory
+    del reads_pivot  # clear unused memory
 
     # Filter crispr adata to filtered barcodes
     logger.debug(
@@ -603,6 +607,7 @@ def process_sample(
 
         logger.info(f"[{sample}] - Writing assignments data...")
         assignments = pl.concat(assignments_list, how="vertical_relaxed").unique()
+
         logger.debug(f"[{sample}] - Assignments data shape: {assignments.shape}")
         _write_assignments_parquet(
             assignments=assignments,
