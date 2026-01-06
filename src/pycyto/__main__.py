@@ -120,7 +120,9 @@ def aggregate(
     from .config import parse_config
 
     config = parse_config(config_path)
-    aggregate_data(config, cyto_outdir, outdir, compress=compress, threads=threads)
+    aggregate_data(
+        config, cyto_outdir, outdir, compress=compress, threads=threads, verbose=verbose
+    )
 
 
 @app.command()

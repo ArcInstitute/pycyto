@@ -572,12 +572,33 @@ def process_sample(
     pass
 
 
+def init_worker(verbose: bool = False):
+    """Initialize logging in each worker process"""
+    import logging
+    import sys
+
+    logger = logging.getLogger("pycyto.aggregate")
+
+    # Clear any existing handlers
+    logger.handlers.clear()
+    log_level = logging.DEBUG if verbose else logging.INFO
+
+    # Add a handler that writes to stderr
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    )
+    logger.addHandler(handler)
+    logger.setLevel(log_level)
+
+
 def aggregate_data(
     config: pl.DataFrame,
     cyto_outdir: str,
     outdir: str,
     compress: bool = False,
     threads: int = -1,
+    verbose: bool = False,
 ):
     logger.info(f"Starting aggregation workflow with output directory: {outdir}")
     logger.debug(f"Compression enabled: {compress}")
@@ -602,8 +623,10 @@ def aggregate_data(
         outdir=outdir,
         compress=compress,
     )
+    partial_init_worker = partial(init_worker, verbose=verbose)
+
     ctx = mp.get_context("spawn")
-    with ctx.Pool(threads) as pool:
+    with ctx.Pool(threads, initializer=partial_init_worker) as pool:
         pool.map(partial_func, unique_samples)
 
     logger.info(
