@@ -1,47 +1,15 @@
-import gc
 import logging
 import multiprocessing as mp
 import os
 import re
-import tracemalloc
 from functools import partial
 
 import anndata as ad
 import anndata.experimental as ade
 import polars as pl
-import psutil
 
 # Set up logger for aggregation
 logger = logging.getLogger("pycyto.aggregate")
-
-
-class MemoryProfiler:
-    """Context manager for memory profiling."""
-
-    def __init__(self, name: str, sample: str):
-        self.name = name
-        self.sample = sample
-        self.process = psutil.Process()
-
-    def __enter__(self):
-        gc.collect()  # Clean up before measuring
-        tracemalloc.start()
-        self.rss_start = self.process.memory_info().rss / 1024**3
-        self.trace_start = tracemalloc.get_traced_memory()[0] / 1024**3
-        return self
-
-    def __exit__(self, *args):
-        current, peak = tracemalloc.get_traced_memory()
-        rss_end = self.process.memory_info().rss / 1024**3
-
-        logger.info(
-            f"[{self.sample}] MEMORY {self.name}: "
-            f"RSS {self.rss_start:.2f}→{rss_end:.2f}GB (Δ{rss_end - self.rss_start:+.2f}GB), "
-            f"Tracemalloc peak: {peak / 1024**3:.2f}GB"
-        )
-
-        tracemalloc.stop()
-        gc.collect()  # Clean up after measuring
 
 
 def lazy_load_adata(path: str) -> ad.AnnData:
@@ -143,147 +111,132 @@ def _process_gex_crispr_set(
     sample: str,
     compress: bool = False,
 ):
-    with MemoryProfiler("START", sample):
-        pass
-    with MemoryProfiler("Concat assignments", sample):
-        logger.debug(
-            f"[{sample}] - Concatenating {len(assignments_list)} assignment dataframes"
-        )
-        assignments = pl.concat(assignments_list, how="vertical_relaxed").unique()
-        logger.debug(f"[{sample}] - Final assignments shape: {assignments.shape}")
+    logger.debug(
+        f"[{sample}] - Concatenating {len(assignments_list)} assignment dataframes"
+    )
+    assignments = pl.concat(assignments_list, how="vertical_relaxed").unique()
+    logger.debug(f"[{sample}] - Final assignments shape: {assignments.shape}")
     del assignments_list  # remove unused
 
-    with MemoryProfiler("Concat reads", sample):
-        logger.debug(f"[{sample}] - Concatenating {len(reads_list)} reads dataframes")
-        reads_df = pl.concat(reads_list, how="vertical_relaxed").unique()
-        logger.debug(f"[{sample}] - Final reads shape: {reads_df.shape}")
+    logger.debug(f"[{sample}] - Concatenating {len(reads_list)} reads dataframes")
+    reads_df = pl.concat(reads_list, how="vertical_relaxed").unique()
+    logger.debug(f"[{sample}] - Final reads shape: {reads_df.shape}")
     del reads_list  # remove unused
 
-    with MemoryProfiler("Concat GEX", sample):
-        logger.debug(
-            f"[{sample}] - Concatenating {len(gex_adata_list)} GEX anndata objects"
-        )
-        gex_adata = ad.concat(gex_adata_list, join="outer")
-        logger.debug(f"[{sample}] - Final GEX data shape: {gex_adata.shape}")
+    logger.debug(
+        f"[{sample}] - Concatenating {len(gex_adata_list)} GEX anndata objects"
+    )
+    gex_adata = ad.concat(gex_adata_list, join="outer")
+    logger.debug(f"[{sample}] - Final GEX data shape: {gex_adata.shape}")
     del gex_adata_list  # remove unused
 
-    with MemoryProfiler("Concat CRISPR", sample):
-        logger.debug(
-            f"[{sample}] - Concatenating {len(crispr_adata_list)} CRISPR anndata objects"
-        )
-        crispr_adata = ad.concat(crispr_adata_list, join="outer")
-        logger.debug(f"[{sample}] - Final CRISPR data shape: {crispr_adata.shape}")
+    logger.debug(
+        f"[{sample}] - Concatenating {len(crispr_adata_list)} CRISPR anndata objects"
+    )
+    crispr_adata = ad.concat(crispr_adata_list, join="outer")
+    logger.debug(f"[{sample}] - Final CRISPR data shape: {crispr_adata.shape}")
     del crispr_adata_list  # remove unused
 
-    with MemoryProfiler("Barcode Conversion", sample):
-        if assignments["cell"].str.contains("CR").any():
-            logger.debug(
-                f"[{sample}] - Detected CR barcodes, converting to BC format for matching"
-            )
-            assignments = assignments.with_columns(
-                match_barcode=pl.col("cell") + "-" + pl.col("lane_id").cast(pl.String)
-            ).with_columns(pl.col("match_barcode").str.replace("CR", "BC"))
-            reads_df = reads_df.with_columns(
-                match_barcode=pl.col("cell_id")
-                + "-"
-                + pl.col("lane_id").cast(pl.String)
-            ).with_columns(pl.col("match_barcode").str.replace("CR", "BC"))
-            crispr_adata.obs.index = crispr_adata.obs.index.str.replace("CR", "BC")
-        else:
-            logger.debug(f"[{sample}] - Using standard barcode format for matching")
-            assignments = assignments.with_columns(
-                match_barcode=pl.col("cell") + "-" + pl.col("lane_id").cast(pl.String)
-            )
-            reads_df = reads_df.with_columns(
-                match_barcode=pl.col("cell_id")
-                + "-"
-                + pl.col("lane_id").cast(pl.String)
-            )
-
-    with MemoryProfiler("Write Assignments", sample):
-        logger.info(f"[{sample}] - Writing assignments data...")
-        _write_assignments_parquet(
-            assignments=assignments,
-            sample_outdir=sample_outdir,
-            sample=sample,
+    if assignments["cell"].str.contains("CR").any():
+        logger.debug(
+            f"[{sample}] - Detected CR barcodes, converting to BC format for matching"
+        )
+        assignments = assignments.with_columns(
+            match_barcode=pl.col("cell") + "-" + pl.col("lane_id").cast(pl.String)
+        ).with_columns(pl.col("match_barcode").str.replace("CR", "BC"))
+        reads_df = reads_df.with_columns(
+            match_barcode=pl.col("cell_id") + "-" + pl.col("lane_id").cast(pl.String)
+        ).with_columns(pl.col("match_barcode").str.replace("CR", "BC"))
+        crispr_adata.obs.index = crispr_adata.obs.index.str.replace("CR", "BC")
+    else:
+        logger.debug(f"[{sample}] - Using standard barcode format for matching")
+        assignments = assignments.with_columns(
+            match_barcode=pl.col("cell") + "-" + pl.col("lane_id").cast(pl.String)
+        )
+        reads_df = reads_df.with_columns(
+            match_barcode=pl.col("cell_id") + "-" + pl.col("lane_id").cast(pl.String)
         )
 
-    with MemoryProfiler("Write Reads", sample):
-        logger.info(f"[{sample}] - Writing reads data...")
-        _write_reads_parquet(
-            reads_df=reads_df,
-            sample_outdir=sample_outdir,
-            sample=sample,
-        )
+    logger.info(f"[{sample}] - Writing assignments data...")
+    _write_assignments_parquet(
+        assignments=assignments,
+        sample_outdir=sample_outdir,
+        sample=sample,
+    )
 
-    with MemoryProfiler("Create merge tables", sample):
-        merged_data = (
-            assignments.select(["match_barcode", "assignment", "umis", "moi"])
-            .join(
-                (  # isolate GEX reads
-                    reads_df.filter(pl.col("mode") == "gex")
-                    .select(["match_barcode", "n_reads", "n_umis"])
-                    .rename({"n_reads": "n_reads_gex", "n_umis": "n_umis_gex"})
-                ),
-                on="match_barcode",
-                how="left",
-            )
-            .join(
-                (  # isolate CRISPR reads
-                    reads_df.filter(pl.col("mode") == "crispr")
-                    .select(["match_barcode", "n_reads", "n_umis"])
-                    .rename({"n_reads": "n_reads_crispr", "n_umis": "n_umis_crispr"})
-                ),
-                on="match_barcode",
-                how="left",
-            )
-            .to_pandas()  # Single conversion at the end
-            .set_index("match_barcode")
+    logger.info(f"[{sample}] - Writing reads data...")
+    _write_reads_parquet(
+        reads_df=reads_df,
+        sample_outdir=sample_outdir,
+        sample=sample,
+    )
+
+    logger.debug(f"[{sample}] - Creating merge tables...")
+    merged_data = (
+        assignments.select(["match_barcode", "assignment", "umis", "moi"])
+        .join(
+            (  # isolate GEX reads
+                reads_df.filter(pl.col("mode") == "gex")
+                .select(["match_barcode", "n_reads", "n_umis"])
+                .rename({"n_reads": "n_reads_gex", "n_umis": "n_umis_gex"})
+            ),
+            on="match_barcode",
+            how="left",
         )
+        .join(
+            (  # isolate CRISPR reads
+                reads_df.filter(pl.col("mode") == "crispr")
+                .select(["match_barcode", "n_reads", "n_umis"])
+                .rename({"n_reads": "n_reads_crispr", "n_umis": "n_umis_crispr"})
+            ),
+            on="match_barcode",
+            how="left",
+        )
+        .to_pandas()  # Single conversion at the end
+        .set_index("match_barcode")
+    )
     del reads_df  # remove immediately
     del assignments  # remove immediately
 
-    with MemoryProfiler("Merge into GEX obs", sample):
-        gex_adata.obs = gex_adata.obs.merge(
-            merged_data,
-            left_index=True,
-            right_index=True,
-            how="left",
-        )
+    # Merge dataframes
+    logger.debug(f"[{sample}] - Merging metadata onto GEX adata")
+    gex_adata.obs = gex_adata.obs.merge(
+        merged_data,
+        left_index=True,
+        right_index=True,
+        how="left",
+    )
 
     # Filter crispr adata to filtered barcodes
-    with MemoryProfiler("Filter CRISPR Data", sample):
-        logger.debug(
-            f"[{sample}] - Filtering CRISPR data to match GEX barcodes (GEX: {gex_adata.shape[0]} cells, CRISPR: {crispr_adata.shape[0]} cells)"
-        )
-        filt_crispr_adata = _filter_crispr_adata_to_gex_barcodes(
-            gex_adata=gex_adata,
-            crispr_adata=crispr_adata,
-        )
-        logger.debug(f"Filtered CRISPR data shape: {filt_crispr_adata.shape}")
+    logger.debug(
+        f"[{sample}] - Filtering CRISPR data to match GEX barcodes (GEX: {gex_adata.shape[0]} cells, CRISPR: {crispr_adata.shape[0]} cells)"
+    )
+    filt_crispr_adata = _filter_crispr_adata_to_gex_barcodes(
+        gex_adata=gex_adata,
+        crispr_adata=crispr_adata,
+    )
+    logger.debug(f"Filtered CRISPR data shape: {filt_crispr_adata.shape}")
     del crispr_adata  # remove unused
 
     # Write both modes
-    with MemoryProfiler("Write GEX", sample):
-        logger.info(f"[{sample}] - Writing GEX anndata...")
-        _write_h5ad(
-            adata=gex_adata,
-            sample_outdir=sample_outdir,
-            sample=sample,
-            compress=compress,
-            mode="gex",
-        )
+    logger.info(f"[{sample}] - Writing GEX anndata...")
+    _write_h5ad(
+        adata=gex_adata,
+        sample_outdir=sample_outdir,
+        sample=sample,
+        compress=compress,
+        mode="gex",
+    )
     del gex_adata  # remove unused
 
-    with MemoryProfiler("Write CRISPR", sample):
-        logger.info(f"[{sample}] - Writing CRISPR anndata...")
-        _write_h5ad(
-            adata=filt_crispr_adata,
-            sample_outdir=sample_outdir,
-            sample=sample,
-            compress=compress,
-            mode="crispr",
-        )
+    logger.info(f"[{sample}] - Writing CRISPR anndata...")
+    _write_h5ad(
+        adata=filt_crispr_adata,
+        sample_outdir=sample_outdir,
+        sample=sample,
+        compress=compress,
+        mode="crispr",
+    )
     del filt_crispr_adata  # remove unused
 
 
