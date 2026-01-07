@@ -307,10 +307,10 @@ def _load_assignments_for_experiment_sample(
                 expected_crispr_assignments_path,
                 separator="\t",
             ).with_columns(
-                pl.lit(sample).alias("sample"),
-                pl.lit(experiment).alias("experiment"),
-                pl.lit(lane_id).alias("lane_id"),
-                pl.lit(crispr_bc).alias("bc_idx"),
+                pl.lit(sample).cast(pl.Categorical).alias("sample"),
+                pl.lit(experiment).cast(pl.Categorical).alias("experiment"),
+                pl.lit(lane_id).cast(pl.Categorical).alias("lane_id"),
+                pl.lit(crispr_bc).cast(pl.Categorical).alias("bc_idx"),
             )
             assignments_list.append(bc_assignments)
         else:
@@ -388,13 +388,15 @@ def _load_reads_for_experiment_sample(
             reads_df = (
                 pl.read_csv(expected_reads_path, separator="\t", has_header=True)
                 .with_columns(
-                    pl.lit(bc).alias("bc_idx"),
-                    pl.lit(lane_id).alias("lane_id"),
-                    pl.lit(experiment).alias("experiment"),
-                    pl.lit(sample).alias("sample"),
-                    pl.lit(mode).alias("mode"),
+                    pl.lit(bc).cast(pl.Categorical).alias("bc_idx"),
+                    pl.lit(lane_id).cast(pl.Categorical).alias("lane_id"),
+                    pl.lit(experiment).cast(pl.Categorical).alias("experiment"),
+                    pl.lit(sample).cast(pl.Categorical).alias("sample"),
+                    pl.lit(mode).cast(pl.Categorical).alias("mode"),
                 )
-                .with_columns(cell_id=pl.col("barcode") + "-" + pl.col("bc_idx"))
+                .with_columns(
+                    cell_id=pl.col("barcode") + "-" + pl.col("bc_idx").cast(pl.String)
+                )
             )
             reads_list.append(reads_df)
         else:
