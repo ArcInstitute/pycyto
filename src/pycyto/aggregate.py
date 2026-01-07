@@ -585,8 +585,6 @@ def process_sample(
     else:
         logger.warning(f"No data found to process for sample '{sample}'")
 
-    pass
-
 
 def init_worker(verbose: bool = False):
     """Initialize logging in each worker process"""
