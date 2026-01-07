@@ -193,6 +193,7 @@ def _process_gex_crispr_set(
             on="match_barcode",
             how="left",
         )
+        .fill_null(0)
         .to_pandas()  # Single conversion at the end
         .set_index("match_barcode")
     )
