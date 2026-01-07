@@ -232,7 +232,7 @@ def _process_gex_crispr_set(
                 (  # isolate CRISPR reads
                     reads_df.filter(pl.col("mode") == "crispr")
                     .select(["match_barcode", "n_reads", "n_umis"])
-                    .rename({"n_reads": "n_reads_crispr", "n_umis": "n_umis_crispr"}),
+                    .rename({"n_reads": "n_reads_crispr", "n_umis": "n_umis_crispr"})
                 ),
                 on="match_barcode",
                 how="left",
