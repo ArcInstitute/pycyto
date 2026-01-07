@@ -6,6 +6,7 @@ from functools import partial
 
 import anndata as ad
 import anndata.experimental as ade
+import pandas as pd
 import polars as pl
 
 # Set up logger for aggregation
@@ -200,6 +201,9 @@ def _process_gex_crispr_set(
 
     # Merge dataframes
     logger.debug(f"[{sample}] - Merging metadata onto GEX adata")
+    assert isinstance(gex_adata.obs, pd.DataFrame), (
+        f"Expected gex_adata.obs to be a DataFrame, got {type(gex_adata.obs)}"
+    )
     gex_adata.obs = gex_adata.obs.merge(
         merged_data,
         left_index=True,
@@ -291,7 +295,7 @@ def _load_gex_anndata_for_experiment_sample(
             bc_adata.obs["experiment"] = experiment
             bc_adata.obs["lane_id"] = lane_id
             bc_adata.obs["bc_idx"] = gex_bc
-            bc_adata.obs.index += "-" + bc_adata.obs["lane_id"].astype(str)
+            bc_adata.obs.index += "-" + bc_adata.obs["lane_id"].astype(str)  # type: ignore
             gex_adata_list.append(bc_adata)
         else:
             logger.warning(
@@ -319,7 +323,7 @@ def _load_crispr_anndata_for_experiment_sample(
             bc_adata.obs["experiment"] = experiment
             bc_adata.obs["lane_id"] = lane_id
             bc_adata.obs["bc_idx"] = crispr_bc
-            bc_adata.obs.index += "-" + bc_adata.obs["lane_id"].astype(str)
+            bc_adata.obs.index += "-" + bc_adata.obs["lane_id"].astype(str)  # type: ignore
             crispr_adata_list.append(bc_adata)
         else:
             logger.warning(

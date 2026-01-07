@@ -27,6 +27,10 @@ build-backend = "uv_build"
 [project.scripts]
 pycyto = "pycyto.__main__:main"
 
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+
 [dependency-groups]
 dev = [
     "marimo>=0.16.5",
