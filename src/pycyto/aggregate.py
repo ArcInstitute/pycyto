@@ -194,6 +194,13 @@ def _process_gex_crispr_set(
             how="left",
         )
         .fill_null(0)
+        .with_columns(
+            pl.col("moi").cast(pl.Int64),
+            pl.col("n_reads_gex").cast(pl.Int64),
+            pl.col("n_reads_crispr").cast(pl.Int64),
+            pl.col("n_umis_gex").cast(pl.Int64),
+            pl.col("n_umis_crispr").cast(pl.Int64),
+        )
         .to_pandas()  # Single conversion at the end
         .set_index("match_barcode")
     )
