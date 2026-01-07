@@ -69,6 +69,6 @@ def convert_mtx_to_anndata(
     adata = adata.T
 
     # ensure CSR format
-    adata.X = adata.X.tocsr()
+    adata.X = adata.X.tocsr()  # type: ignore
 
     return adata
