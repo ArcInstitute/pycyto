@@ -200,35 +200,52 @@ def _process_gex_crispr_set(
                 + pl.col("lane_id").cast(pl.String)
             )
 
-    with MemoryProfiler("Create merge tables", sample):
-        logger.debug(f"[{sample}] - Merging assignment data with GEX observations")
-        assignment_data = (
-            assignments.select(["match_barcode", "assignment", "umis", "moi"])
-            .to_pandas()
-            .set_index("match_barcode")
-        )
-        logger.debug(
-            f"[{sample}] - Assignment data shape for merge: {assignment_data.shape}"
+    with MemoryProfiler("Write Assignments", sample):
+        logger.info(f"[{sample}] - Writing assignments data...")
+        _write_assignments_parquet(
+            assignments=assignments,
+            sample_outdir=sample_outdir,
+            sample=sample,
         )
 
-        logger.debug(f"[{sample}] - Merging reads statistics with GEX observations")
-        reads_pivot = (
-            reads_df.select(["match_barcode", "mode", "n_reads", "n_umis"])
-            .pivot(index="match_barcode", on="mode", values=["n_reads", "n_umis"])
-            .fill_null(0)
-            .to_pandas()
+    with MemoryProfiler("Write Reads", sample):
+        logger.info(f"[{sample}] - Writing reads data...")
+        _write_reads_parquet(
+            reads_df=reads_df,
+            sample_outdir=sample_outdir,
+            sample=sample,
+        )
+
+    with MemoryProfiler("Create merge tables", sample):
+        merged_data = (
+            assignments.select(["match_barcode", "assignment", "umis", "moi"])
+            .join(
+                (  # isolate GEX reads
+                    reads_df.filter(pl.col("mode") == "gex")
+                    .select(["match_barcode", "n_reads", "n_umis"])
+                    .rename({"n_reads": "n_reads_gex", "n_umis": "n_umis_gex"})
+                ),
+                on="match_barcode",
+                how="left",
+            )
+            .join(
+                (  # isolate CRISPR reads
+                    reads_df.filter(pl.col("mode") == "crispr")
+                    .select(["match_barcode", "n_reads", "n_umis"])
+                    .rename({"n_reads": "n_reads_crispr", "n_umis": "n_umis_crispr"}),
+                ),
+                on="match_barcode",
+                how="left",
+            )
+            .to_pandas()  # Single conversion at the end
             .set_index("match_barcode")
         )
-        logger.debug(f"[{sample}] - Reads pivot shape for merge: {reads_pivot.shape}")
+    del reads_df  # remove immediately
+    del assignments  # remove immediately
 
     with MemoryProfiler("Merge into GEX obs", sample):
-        gex_adata.obs = gex_adata.obs.merge(  # type: ignore
-            assignment_data,
-            left_index=True,
-            right_index=True,
-            how="left",
-        ).merge(
-            reads_pivot,
+        gex_adata.obs = gex_adata.obs.merge(
+            merged_data,
             left_index=True,
             right_index=True,
             how="left",
@@ -268,24 +285,6 @@ def _process_gex_crispr_set(
             mode="crispr",
         )
     del filt_crispr_adata  # remove unused
-
-    with MemoryProfiler("Write Assignments", sample):
-        logger.info(f"[{sample}] - Writing assignments data...")
-        _write_assignments_parquet(
-            assignments=assignments,
-            sample_outdir=sample_outdir,
-            sample=sample,
-        )
-    del assignments  # remove unused
-
-    with MemoryProfiler("Write Reads", sample):
-        logger.info(f"[{sample}] - Writing reads data...")
-        _write_reads_parquet(
-            reads_df=reads_df,
-            sample_outdir=sample_outdir,
-            sample=sample,
-        )
-    del reads_df  # remove unused
 
 
 def _load_assignments_for_experiment_sample(
