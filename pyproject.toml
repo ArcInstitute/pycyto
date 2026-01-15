@@ -2,7 +2,7 @@
 name = "pycyto"
 version = "0.1.13"
 description = "Python utilities used by cyto"
-license = "MIT"
+license = "BSD-3-Clause"
 readme = "README.md"
 authors = [
     { name = "Noam Teyssier", email = "22600644+noamteyssier@users.noreply.github.com" },
