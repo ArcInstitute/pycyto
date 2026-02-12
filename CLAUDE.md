@@ -46,29 +46,61 @@ uv pip install -e .
 
 **Key challenge**: Users need a concise way to specify barcode ranges and pairings without listing hundreds of individual barcodes.
 
+### Supported Barcode Formats
+
+Pycyto supports two barcode naming conventions:
+
+**Flex-V1 (16-plex)**:
+
+- **Format**: `BC001`-`BC016`, `CR001`-`CR016`, `AB001`-`AB016`
+- **Use case**: Standard 16-plex multiplexing for GEX, CRISPR, or antibody capture
+
+**Flex-V2 (384-plex)**:
+
+- **Format**: `[ABCD]-[ABCDEFGH][01-12]` or `[ABCD]_[ABCDEFGH][01-12]`
+  - Examples: `A-A01`, `B-C05`, `D-H12` or `A_A01`, `B_C05`, `D_H12`
+  - Both hyphen and underscore separators are supported
+- **Structure**: 4 sets × 8 rows × 12 columns = 384 unique barcodes
+- **Sets**: A, B, C, D
+- **Rows**: A-H (8 rows per set, like a 96-well plate)
+- **Columns**: 01-12 (12 columns per row)
+- **Use case**: High-throughput 384-plex multiplexing
+- **Note**: No BC/CR dual naming for Flex-V2 (single naming scheme per barcode set)
+
+The barcode format is automatically detected from the naming convention - no config flag needed.
+
 ### Barcode Expansion DSL
 
 The config parser implements a mini-language for specifying barcodes:
 
-**Range syntax**:
+**Flex-V1 Range syntax**:
 
 ```json
 "BC1..8"  → expands to BC001, BC002, BC003, ..., BC008
 ```
 
-**Selection syntax**:
+**Flex-V2 Range syntax**:
+
+```json
+"A-A01..A-A12"  → expands to A-A01, A-A02, ..., A-A12
+"A-A01..A-H12"  → expands to all 96 barcodes in set A (full plate)
+```
+
+**Selection syntax** (both V1 and V2):
 
 ```json
 "BC1|BC3|BC5"  → expands to BC001, BC003, BC005
+"A-A01|A-A05|A-C03"  → expands to A-A01, A-A05, A-C03
 ```
 
 **Combined syntax**:
 
 ```json
 "BC1..4|BC7|BC9..12"  → expands to BC001, BC002, BC003, BC004, BC007, BC009, BC010, BC011, BC012
+"A-A01..A-A12|B-B01..B-B12"  → expands to ranges from sets A and B
 ```
 
-**Pairing syntax** (for multi-modal experiments):
+**Pairing syntax** (for multi-modal experiments, Flex-V1 only):
 
 ```json
 "BC1..8+CR1..8"  → pairs BC001+CR001, BC002+CR002, ..., BC008+CR008
@@ -78,6 +110,12 @@ The config parser implements a mini-language for specifying barcodes:
 
 ```json
 "BC001+CR001|BC002+CR002"  → two separate pairings
+```
+
+**Flex-V2 Multi-Modal**: Since Flex-V2 uses a single naming scheme (no BC/CR dual naming), no `+` pairing is needed:
+
+```json
+"A-A01..A-H12"  → uses same barcodes for both GEX and CRISPR
 ```
 
 ### Ambiguity Resolution
@@ -143,19 +181,24 @@ experiment | sample | mode | bc_component | bc_idx | features | probe_set | feat
 
 ### Barcode Format Conversion
 
-**The problem**: CRISPR libraries can use either BC or CR flex barcode prefixes depending on the experimental design. When pairing GEX (which always uses BC) with CRISPR data that uses CR prefixes, the cell barcodes need to be matched correctly.
+**The problem (Flex-V1 only)**: CRISPR libraries can use either BC or CR flex barcode prefixes depending on the experimental design. When pairing GEX (which always uses BC) with CRISPR data that uses CR prefixes, the cell barcodes need to be matched correctly.
 
-**Why separate prefixes**: CRISPR and GEX can be run with different flex barcode sets:
+**Why separate prefixes (Flex-V1)**: CRISPR and GEX can be run with different flex barcode sets:
 
 - Same barcodes: `BC1..8+BC9..16` (CRISPR uses BC)
 - Different barcodes: `BC1..8+CR1..8` (CRISPR uses CR)
 
 **The solution**:
 
-- Detect if CRISPR uses CR prefixes by checking assignment data
-- If CR detected: cell barcodes like `ACGTACGT-CR001-1` are converted to `ACGTACGT-BC001-1`
-- If BC detected: no conversion needed, barcodes already match
-- Matching is always done on `cell_barcode + flex_barcode + lane_id`
+1. Detect barcode format (Flex-V1 vs Flex-V2) from GEX data
+2. **For Flex-V1**:
+   - Detect if CRISPR uses CR prefixes by checking assignment data
+   - If CR detected: cell barcodes like `ACGTACGT-CR001-1` are converted to `ACGTACGT-BC001-1`
+   - If BC detected: no conversion needed, barcodes already match
+3. **For Flex-V2**:
+   - No conversion needed - single naming scheme per barcode set
+   - Both GEX and CRISPR use the same barcode identifiers (e.g., `A-A01`)
+4. Matching is always done on `cell_barcode + flex_barcode + lane_id`
 
 See `_process_gex_crispr_set()` around line 140-160 for the detection and conversion logic.
 
@@ -249,7 +292,7 @@ cyto_outdir/
 
 ## Common Patterns
 
-### Single-Modal GEX Experiment
+### Single-Modal GEX Experiment (Flex-V1)
 
 ```json
 {
@@ -266,7 +309,7 @@ cyto_outdir/
 }
 ```
 
-### Multi-Modal Perturb-seq
+### Multi-Modal Perturb-seq (Flex-V1)
 
 ```json
 {
@@ -285,6 +328,52 @@ cyto_outdir/
   ]
 }
 ```
+
+### Single-Modal GEX Experiment (Flex-V2, 384-plex)
+
+```json
+{
+  "libraries": { "GEX": "./gex_probes.tsv" },
+  "samples": [
+    {
+      "experiment": "exp1",
+      "mode": "gex",
+      "features": "GEX",
+      "sample": "poolA_sample1",
+      "barcodes": "A-A01..A-H12"
+    },
+    {
+      "experiment": "exp1",
+      "mode": "gex",
+      "features": "GEX",
+      "sample": "poolB_sample1",
+      "barcodes": "B-A01..B-H12"
+    }
+  ]
+}
+```
+
+### Multi-Modal Perturb-seq (Flex-V2)
+
+```json
+{
+  "libraries": {
+    "GEX": "./gex_probes.tsv",
+    "GUIDES": "./guides.tsv"
+  },
+  "samples": [
+    {
+      "experiment": "perturbseq",
+      "mode": "gex+crispr",
+      "features": "GEX+GUIDES",
+      "sample": "screen_poolA",
+      "barcodes": "A-A01..A-H12"
+    }
+  ]
+}
+```
+
+**Note**: Flex-V2 uses a single naming scheme, so no `+` pairing is needed for multi-modal experiments.
 
 ## Testing
 
