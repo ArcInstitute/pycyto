@@ -32,11 +32,11 @@ def _write_h5ad(
     sample: str,
     compress: bool = False,
     mode: str = "gex",
-):
+) -> None:
     adata.obs_names_make_unique()  # always make unique
-    output_path = os.path.join(sample_outdir, f"{sample}_{mode}.h5ad")
-    adata.write_h5ad(
-        output_path,
+    output_path: str = os.path.join(sample_outdir, f"{sample}_{mode}.h5ad")
+    adata.write_h5ad(  # type: ignore[misc]
+        filename=output_path,
         compression="gzip" if compress else None,
     )
     logger.debug(
