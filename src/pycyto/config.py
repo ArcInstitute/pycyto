@@ -1,11 +1,32 @@
 import json
 import os
+import re
 
 import polars as pl
 
 KNOWN_LIBMODES = ["gex", "crispr", "ab"]
-KNOWN_PROBE_SET = ["BC", "CR", "AB"]
-KNOWN_BARCODES = [f"{name}0{i:02d}" for i in range(1, 17) for name in KNOWN_PROBE_SET]
+
+# Flex-V1 barcodes (16-plex)
+FLEX_V1_PROBE_SETS = ["BC", "CR", "AB"]
+FLEX_V1_BARCODES = [
+    f"{name}0{i:02d}" for i in range(1, 17) for name in FLEX_V1_PROBE_SETS
+]
+
+# Flex-V2 barcodes (384-plex)
+# Pattern: [ABCD]-[ABCDEFGH][01-12]
+FLEX_V2_SETS = ["A", "B", "C", "D"]
+FLEX_V2_ROWS = ["A", "B", "C", "D", "E", "F", "G", "H"]
+FLEX_V2_COLS = [f"{i:02d}" for i in range(1, 13)]
+FLEX_V2_BARCODES = [
+    f"{set_}-{row}{col}"
+    for set_ in FLEX_V2_SETS
+    for row in FLEX_V2_ROWS
+    for col in FLEX_V2_COLS
+]
+
+# Combined list for validation
+KNOWN_PROBE_SET = FLEX_V1_PROBE_SETS + FLEX_V2_SETS
+KNOWN_BARCODES = FLEX_V1_BARCODES + FLEX_V2_BARCODES
 EXPECTED_SAMPLE_KEYS = [
     "experiment",
     "sample",
@@ -17,6 +38,38 @@ EXPECTED_KEYS = [
     "libraries",
     "samples",
 ]
+
+
+def _is_flex_v1_barcode(barcode: str) -> bool:
+    """Check if barcode follows Flex-V1 format: BC001, CR001, AB001, etc."""
+    return re.match(r"^(BC|CR|AB)0\d{2}$", barcode) is not None
+
+
+def _is_flex_v2_barcode(barcode: str) -> bool:
+    """Check if barcode follows Flex-V2 format: A-A01, B-C05, D-H12, etc."""
+    return re.match(r"^[ABCD]-[ABCDEFGH](0[1-9]|1[0-2])$", barcode) is not None
+
+
+def _detect_barcode_format(barcodes: list[str]) -> str:
+    """Detect the barcode format from a list of barcodes."""
+    if not barcodes:
+        raise ValueError("Cannot detect format from empty barcode list")
+
+    sample = barcodes[0]
+    if _is_flex_v1_barcode(sample):
+        return "flex-v1"
+    elif _is_flex_v2_barcode(sample):
+        return "flex-v2"
+    else:
+        raise ValueError(f"Unknown barcode format: {sample}")
+
+
+def _get_flex_v2_prefix(barcode: str) -> str:
+    """Extract the set prefix from a Flex-V2 barcode: A-A01 → A"""
+    match = re.match(r"^([ABCD])-", barcode)
+    if match:
+        return match.group(1)
+    raise ValueError(f"Invalid Flex-V2 barcode: {barcode}")
 
 
 def _expand_range(range_str: str) -> list[int]:
@@ -65,12 +118,102 @@ def _expand_selection(selection: str) -> list[int]:
     return sorted(list(set(result)))
 
 
+def _expand_flex_v2_range(
+    prefix: str, start_row: str, start_col: int, end_row: str, end_col: int
+) -> list[str]:
+    """
+    Expand Flex-V2 plate range notation.
+
+    Examples:
+        _expand_flex_v2_range("A", "A", 1, "A", 12) → ["A-A01", "A-A02", ..., "A-A12"]
+        _expand_flex_v2_range("A", "A", 1, "H", 12) → ["A-A01", ..., "A-A12", "A-B01", ..., "A-H12"]
+    """
+    rows = FLEX_V2_ROWS
+    start_row_idx = rows.index(start_row)
+    end_row_idx = rows.index(end_row)
+
+    barcodes = []
+    for row_idx in range(start_row_idx, end_row_idx + 1):
+        row = rows[row_idx]
+
+        # Determine column range
+        if row == start_row and row == end_row:
+            # Same row: use specified column range
+            col_range = range(start_col, end_col + 1)
+        elif row == start_row:
+            # First row: start_col to 12
+            col_range = range(start_col, 13)
+        elif row == end_row:
+            # Last row: 1 to end_col
+            col_range = range(1, end_col + 1)
+        else:
+            # Middle rows: all columns (1-12)
+            col_range = range(1, 13)
+
+        for col in col_range:
+            barcodes.append(f"{prefix}-{row}{col:02d}")
+
+    return barcodes
+
+
+def _parse_flex_v2_component(component: str) -> list[str]:
+    """
+    Parse Flex-V2 barcode component.
+
+    Supports:
+        - Single: "A-A01" → ["A-A01"]
+        - Range: "A-A01..A-A12" → ["A-A01", "A-A02", ..., "A-A12"]
+        - Range: "A-A01..A-H12" → all 96 barcodes in set A
+        - Selection: "A-A01|A-A05|A-A09" → ["A-A01", "A-A05", "A-A09"]
+    """
+    # Check if it contains range notation (..)
+    if ".." in component:
+        match = re.match(
+            r"^([ABCD])-([ABCDEFGH])(\d{2})\.\.([ABCD])-([ABCDEFGH])(\d{2})$", component
+        )
+        if not match:
+            raise ValueError(f"Invalid Flex-V2 range notation: {component}")
+
+        start_prefix = match.group(1)
+        start_row = match.group(2)
+        start_col = int(match.group(3))
+        end_prefix = match.group(4)
+        end_row = match.group(5)
+        end_col = int(match.group(6))
+
+        if start_prefix != end_prefix:
+            raise ValueError(f"Cannot expand range across different sets: {component}")
+
+        return _expand_flex_v2_range(
+            start_prefix, start_row, start_col, end_row, end_col
+        )
+
+    # Check if it contains selection notation (|)
+    elif "|" in component:
+        parts = component.split("|")
+        barcodes = []
+        for part in parts:
+            barcodes.extend(_parse_flex_v2_component(part.strip()))
+        return barcodes
+
+    # Single barcode
+    else:
+        if not _is_flex_v2_barcode(component):
+            raise ValueError(f"Invalid Flex-V2 barcode: {component}")
+        return [component]
+
+
 def _expand_barcode_component(component: str) -> list[str]:
     """Expand a barcode component like 'BC1..8' into ['BC001', 'BC002', ..., 'BC008']."""
     # Check if this is already an explicit barcode (backward compatibility)
     if component in KNOWN_BARCODES:
         return [component]
 
+    # Check if it's Flex-V2 format (contains hyphen like A-A01)
+    if "-" in component and component[0] in FLEX_V2_SETS:
+        return _parse_flex_v2_component(component)
+
+    # Otherwise, use existing Flex-V1 logic
     # Extract prefix and numeric part
     # Find where the letters end and numbers begin
     i = 0
@@ -217,14 +360,22 @@ def _pull_feature_path(feature: str, libraries: dict) -> str:
 
 
 def _assign_probeset(barcode: str) -> str:
+    """
+    Assign probe set based on barcode prefix.
+
+    Flex-V1: BC001 → "BC", CR001 → "CR", AB001 → "AB"
+    Flex-V2: A-A01 → "A", B-C05 → "B", D-H12 → "D"
+    """
     if barcode.startswith("BC"):
         return "BC"
     elif barcode.startswith("CR"):
         return "CR"
     elif barcode.startswith("AB"):
         return "AB"
+    elif _is_flex_v2_barcode(barcode):
+        return _get_flex_v2_prefix(barcode)
     else:
-        raise ValueError(f"Invalid barcode format: {barcode}")
+        raise ValueError(f"Unknown barcode format: {barcode}")
 
 
 def parse_config(config_path: str):

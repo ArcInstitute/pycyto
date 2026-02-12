@@ -13,6 +13,11 @@ import polars as pl
 logger = logging.getLogger("pycyto.aggregate")
 
 
+def _is_flex_v2_barcode(barcode: str) -> bool:
+    """Check if barcode follows Flex-V2 format: A-A01, B-C05, D-H12, etc."""
+    return re.match(r"^[ABCD]-[ABCDEFGH](0[1-9]|1[0-2])$", barcode) is not None
+
+
 def lazy_load_adata(path: str) -> ad.AnnData:
     """Lazy load the anndata object from the path - notably load in the obs and var as well."""
     adata = ade.read_lazy(path)
@@ -138,9 +143,18 @@ def _process_gex_crispr_set(
     logger.debug(f"[{sample}] - Final CRISPR data shape: {crispr_adata.shape}")
     del crispr_adata_list  # remove unused
 
-    if assignments["cell"].str.contains("CR").any():
+    # Check if we need to convert CR→BC for Flex-V1
+    # Flex-V2 uses a single naming scheme, so no conversion needed
+    sample_barcode = (
+        str(gex_adata.obs.index[0]).split("-")[1]
+        if len(gex_adata.obs.index) > 0
+        else ""
+    )
+    is_flex_v2 = _is_flex_v2_barcode(sample_barcode)
+
+    if not is_flex_v2 and assignments["cell"].str.contains("CR").any():
         logger.debug(
-            f"[{sample}] - Detected CR barcodes, converting to BC format for matching"
+            f"[{sample}] - Detected Flex-V1 CR barcodes, converting to BC format for matching"
         )
         assignments = assignments.with_columns(
             match_barcode=pl.col("cell") + "-" + pl.col("lane_id").cast(pl.String)
@@ -150,7 +164,14 @@ def _process_gex_crispr_set(
         ).with_columns(pl.col("match_barcode").str.replace("CR", "BC"))
         crispr_adata.obs.index = crispr_adata.obs.index.str.replace("CR", "BC")
     else:
-        logger.debug(f"[{sample}] - Using standard barcode format for matching")
+        if is_flex_v2:
+            logger.debug(
+                f"[{sample}] - Detected Flex-V2 format, no barcode conversion needed"
+            )
+        else:
+            logger.debug(
+                f"[{sample}] - Using standard Flex-V1 barcode format for matching"
+            )
         assignments = assignments.with_columns(
             match_barcode=pl.col("cell") + "-" + pl.col("lane_id").cast(pl.String)
         )
