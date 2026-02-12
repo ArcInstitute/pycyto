@@ -1,0 +1,36 @@
+{
+  "libraries": {
+    "GEX": "/path/to/gex_probes.tsv",
+    "GUIDES": "/path/to/crispr_guides.tsv"
+  },
+  "samples": [
+    {
+      "experiment": "exp1",
+      "mode": "gex",
+      "features": "GEX",
+      "sample": "poolA_sample1",
+      "barcodes": "A-A01..A-H12"
+    },
+    {
+      "experiment": "exp1",
+      "mode": "gex",
+      "features": "GEX",
+      "sample": "poolB_sample1",
+      "barcodes": "B-A01..B-H12"
+    },
+    {
+      "experiment": "exp2",
+      "mode": "gex+crispr",
+      "features": "GEX+GUIDES",
+      "sample": "poolA_sample2",
+      "barcodes": "A-A01..A-D06"
+    },
+    {
+      "experiment": "exp2",
+      "mode": "gex+crispr",
+      "features": "GEX+GUIDES",
+      "sample": "poolB_sample2",
+      "barcodes": "B-C01|B-C05|B-D03"
+    }
+  ]
+}

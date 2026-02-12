@@ -13,6 +13,11 @@ import polars as pl
 logger = logging.getLogger("pycyto.aggregate")
 
 
+def _is_flex_v2_barcode(barcode: str) -> bool:
+    """Check if barcode follows Flex-V2 format: A-A01, B-C05, D-H12, etc."""
+    return re.match(r"^[ABCD]-[ABCDEFGH](0[1-9]|1[0-2])$", barcode) is not None
+
+
 def lazy_load_adata(path: str) -> ad.AnnData:
     """Lazy load the anndata object from the path - notably load in the obs and var as well."""
     adata = ade.read_lazy(path)
@@ -138,9 +143,18 @@ def _process_gex_crispr_set(
     logger.debug(f"[{sample}] - Final CRISPR data shape: {crispr_adata.shape}")
     del crispr_adata_list  # remove unused
 
-    if assignments["cell"].str.contains("CR").any():
+    # Check if we need to convert CR→BC for Flex-V1
+    # Flex-V2 uses a single naming scheme, so no conversion needed
+    sample_barcode = (
+        str(gex_adata.obs.index[0]).split("-")[1]
+        if len(gex_adata.obs.index) > 0
+        else ""
+    )
+    is_flex_v2 = _is_flex_v2_barcode(sample_barcode)
+
+    if not is_flex_v2 and assignments["cell"].str.contains("CR").any():
         logger.debug(
-            f"[{sample}] - Detected CR barcodes, converting to BC format for matching"
+            f"[{sample}] - Detected Flex-V1 CR barcodes, converting to BC format for matching"
         )
         assignments = assignments.with_columns(
             match_barcode=pl.col("cell") + "-" + pl.col("lane_id").cast(pl.String)
@@ -150,7 +164,14 @@ def _process_gex_crispr_set(
         ).with_columns(pl.col("match_barcode").str.replace("CR", "BC"))
         crispr_adata.obs.index = crispr_adata.obs.index.str.replace("CR", "BC")
     else:
-        logger.debug(f"[{sample}] - Using standard barcode format for matching")
+        if is_flex_v2:
+            logger.debug(
+                f"[{sample}] - Detected Flex-V2 format, no barcode conversion needed"
+            )
+        else:
+            logger.debug(
+                f"[{sample}] - Using standard Flex-V1 barcode format for matching"
+            )
         assignments = assignments.with_columns(
             match_barcode=pl.col("cell") + "-" + pl.col("lane_id").cast(pl.String)
         )
@@ -397,9 +418,9 @@ def process_sample(
         base_pattern = "|".join([re.escape(prefix) for prefix in base_prefixes])
         prefix_regex = re.compile(rf"^({base_pattern})\d+.*")
 
-        # determine data regex
-        crispr_regex = re.compile(r".+_CRISPR_Lane.+")
-        gex_regex = re.compile(r".+_GEX_Lane.+")
+        # determine data regex (support both _Lane and no-Lane formats)
+        crispr_regex = re.compile(r".+_CRISPR(_Lane.+)?$")
+        gex_regex = re.compile(r".+_GEX(_Lane.+)?$")
         lane_regex = re.compile(r"_Lane(\d+)")
 
         gex_bcs = (
@@ -434,6 +455,33 @@ def process_sample(
             f"[{sample}] - Found {len(matched_directories)} matching directories for experiment '{e}'"
         )
 
+        # If no Lane directories found, check for single-lane format (no _Lane suffix)
+        if len(matched_directories) == 0:
+            logger.debug(
+                f"[{sample}] - No directories with '_Lane' suffix found, checking for single-lane format"
+            )
+            # Check for directories that match base prefixes exactly (without Lane suffix)
+            single_lane_prefixes = {p.replace("_Lane", "") for p in base_prefixes}
+            found_dirs = set()
+            for root, _dirs, _files in os.walk(cyto_outdir, followlinks=True):
+                basename = os.path.basename(root)
+                if not lane_regex.search(basename):
+                    for single_lane_prefix in single_lane_prefixes:
+                        if basename.startswith(single_lane_prefix):
+                            dir_tuple = (root, basename)
+                            if dir_tuple not in found_dirs:
+                                matched_directories.append(dir_tuple)
+                                found_dirs.add(dir_tuple)
+                                logger.info(
+                                    f"[{sample}] - Found single-lane directory (no _Lane suffix): {basename}. Treating as Lane 1."
+                                )
+                            break
+
+        if len(matched_directories) == 0:
+            logger.warning(
+                f"[{sample}] - No matching directories found for experiment '{e}'. Expected patterns: {base_prefixes} or their single-lane equivalents (without _Lane suffix)"
+            )
+
         # Process all discovered directories
         for root, basename in matched_directories:
             logger.info(f"[{sample}] - Processing directory: {basename}")
@@ -442,7 +490,11 @@ def process_sample(
             if lane_regex_match:
                 lane_id = lane_regex_match.group(1)
             else:
-                raise ValueError(f"Invalid basename: {basename}")
+                # Single-lane format without _Lane suffix, default to lane 1
+                lane_id = "1"
+                logger.debug(
+                    f"[{sample}] - No Lane number in directory name '{basename}', defaulting to Lane 1"
+                )
 
             # process crispr data
             if crispr_regex.match(basename):
