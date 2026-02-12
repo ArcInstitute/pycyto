@@ -418,9 +418,9 @@ def process_sample(
         base_pattern = "|".join([re.escape(prefix) for prefix in base_prefixes])
         prefix_regex = re.compile(rf"^({base_pattern})\d+.*")
 
-        # determine data regex
-        crispr_regex = re.compile(r".+_CRISPR_Lane.+")
-        gex_regex = re.compile(r".+_GEX_Lane.+")
+        # determine data regex (support both _Lane and no-Lane formats)
+        crispr_regex = re.compile(r".+_CRISPR(_Lane.+)?$")
+        gex_regex = re.compile(r".+_GEX(_Lane.+)?$")
         lane_regex = re.compile(r"_Lane(\d+)")
 
         gex_bcs = (
@@ -455,6 +455,33 @@ def process_sample(
             f"[{sample}] - Found {len(matched_directories)} matching directories for experiment '{e}'"
         )
 
+        # If no Lane directories found, check for single-lane format (no _Lane suffix)
+        if len(matched_directories) == 0:
+            logger.debug(
+                f"[{sample}] - No directories with '_Lane' suffix found, checking for single-lane format"
+            )
+            # Check for directories that match base prefixes exactly (without Lane suffix)
+            single_lane_prefixes = {p.replace("_Lane", "") for p in base_prefixes}
+            found_dirs = set()
+            for root, _dirs, _files in os.walk(cyto_outdir, followlinks=True):
+                basename = os.path.basename(root)
+                if not lane_regex.search(basename):
+                    for single_lane_prefix in single_lane_prefixes:
+                        if basename.startswith(single_lane_prefix):
+                            dir_tuple = (root, basename)
+                            if dir_tuple not in found_dirs:
+                                matched_directories.append(dir_tuple)
+                                found_dirs.add(dir_tuple)
+                                logger.info(
+                                    f"[{sample}] - Found single-lane directory (no _Lane suffix): {basename}. Treating as Lane 1."
+                                )
+                            break
+
+        if len(matched_directories) == 0:
+            logger.warning(
+                f"[{sample}] - No matching directories found for experiment '{e}'. Expected patterns: {base_prefixes} or their single-lane equivalents (without _Lane suffix)"
+            )
+
         # Process all discovered directories
         for root, basename in matched_directories:
             logger.info(f"[{sample}] - Processing directory: {basename}")
@@ -463,7 +490,11 @@ def process_sample(
             if lane_regex_match:
                 lane_id = lane_regex_match.group(1)
             else:
-                raise ValueError(f"Invalid basename: {basename}")
+                # Single-lane format without _Lane suffix, default to lane 1
+                lane_id = "1"
+                logger.debug(
+                    f"[{sample}] - No Lane number in directory name '{basename}', defaulting to Lane 1"
+                )
 
             # process crispr data
             if crispr_regex.match(basename):
