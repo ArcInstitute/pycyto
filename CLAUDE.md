@@ -57,7 +57,9 @@ Pycyto supports two barcode naming conventions:
 
 **Flex-V2 (384-plex)**:
 
-- **Format**: `[ABCD]-[ABCDEFGH][01-12]` (e.g., `A-A01`, `B-C05`, `D-H12`)
+- **Format**: `[ABCD]-[ABCDEFGH][01-12]` or `[ABCD]_[ABCDEFGH][01-12]`
+  - Examples: `A-A01`, `B-C05`, `D-H12` or `A_A01`, `B_C05`, `D_H12`
+  - Both hyphen and underscore separators are supported
 - **Structure**: 4 sets × 8 rows × 12 columns = 384 unique barcodes
 - **Sets**: A, B, C, D
 - **Rows**: A-H (8 rows per set, like a 96-well plate)

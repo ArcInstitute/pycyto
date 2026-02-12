@@ -13,7 +13,7 @@ FLEX_V1_BARCODES = [
 ]
 
 # Flex-V2 barcodes (384-plex)
-# Pattern: [ABCD]-[ABCDEFGH][01-12]
+# Pattern: [ABCD]-[ABCDEFGH][01-12] or [ABCD]_[ABCDEFGH][01-12]
 FLEX_V2_SETS = ["A", "B", "C", "D"]
 FLEX_V2_ROWS = ["A", "B", "C", "D", "E", "F", "G", "H"]
 FLEX_V2_COLS = [f"{i:02d}" for i in range(1, 13)]
@@ -23,10 +23,12 @@ FLEX_V2_BARCODES = [
     for row in FLEX_V2_ROWS
     for col in FLEX_V2_COLS
 ]
+# Also include underscore variants for validation
+FLEX_V2_BARCODES_UNDERSCORE = [bc.replace("-", "_") for bc in FLEX_V2_BARCODES]
 
 # Combined list for validation
 KNOWN_PROBE_SET = FLEX_V1_PROBE_SETS + FLEX_V2_SETS
-KNOWN_BARCODES = FLEX_V1_BARCODES + FLEX_V2_BARCODES
+KNOWN_BARCODES = FLEX_V1_BARCODES + FLEX_V2_BARCODES + FLEX_V2_BARCODES_UNDERSCORE
 EXPECTED_SAMPLE_KEYS = [
     "experiment",
     "sample",
@@ -46,8 +48,11 @@ def _is_flex_v1_barcode(barcode: str) -> bool:
 
 
 def _is_flex_v2_barcode(barcode: str) -> bool:
-    """Check if barcode follows Flex-V2 format: A-A01, B-C05, D-H12, etc."""
-    return re.match(r"^[ABCD]-[ABCDEFGH](0[1-9]|1[0-2])$", barcode) is not None
+    """Check if barcode follows Flex-V2 format: A-A01, B-C05, D-H12, etc.
+
+    Also accepts underscore separator: A_A01, B_C05, D_H12
+    """
+    return re.match(r"^[ABCD][-_][ABCDEFGH](0[1-9]|1[0-2])$", barcode) is not None
 
 
 def _detect_barcode_format(barcodes: list[str]) -> str:
@@ -64,9 +69,20 @@ def _detect_barcode_format(barcodes: list[str]) -> str:
         raise ValueError(f"Unknown barcode format: {sample}")
 
 
+def _normalize_flex_v2_barcode(barcode: str) -> str:
+    """Normalize Flex-V2 barcode by replacing underscore with hyphen.
+
+    A_A01 → A-A01
+    A-A01 → A-A01 (unchanged)
+    """
+    if "_" in barcode and _is_flex_v2_barcode(barcode):
+        return barcode.replace("_", "-")
+    return barcode
+
+
 def _get_flex_v2_prefix(barcode: str) -> str:
-    """Extract the set prefix from a Flex-V2 barcode: A-A01 → A"""
-    match = re.match(r"^([ABCD])-", barcode)
+    """Extract the set prefix from a Flex-V2 barcode: A-A01 → A, A_A01 → A"""
+    match = re.match(r"^([ABCD])[-_]", barcode)
     if match:
         return match.group(1)
     raise ValueError(f"Invalid Flex-V2 barcode: {barcode}")
@@ -161,11 +177,16 @@ def _parse_flex_v2_component(component: str) -> list[str]:
     Parse Flex-V2 barcode component.
 
     Supports:
-        - Single: "A-A01" → ["A-A01"]
+        - Single: "A-A01" or "A_A01" → ["A-A01"]
         - Range: "A-A01..A-A12" → ["A-A01", "A-A02", ..., "A-A12"]
         - Range: "A-A01..A-H12" → all 96 barcodes in set A
         - Selection: "A-A01|A-A05|A-A09" → ["A-A01", "A-A05", "A-A09"]
+
+    Accepts both hyphen (-) and underscore (_) as separators, normalizes to hyphen.
     """
+    # Normalize underscores to hyphens
+    component = component.replace("_", "-")
+
     # Check if it contains range notation (..)
     if ".." in component:
         match = re.match(
@@ -204,13 +225,16 @@ def _parse_flex_v2_component(component: str) -> list[str]:
 
 
 def _expand_barcode_component(component: str) -> list[str]:
-    """Expand a barcode component like 'BC1..8' into ['BC001', 'BC002', ..., 'BC008']."""
+    """Expand a barcode component like 'BC1..8' into ['BC001', 'BC002', ..., 'BC008'].
+
+    Also handles Flex-V2 format with hyphen (A-A01) or underscore (A_A01).
+    """
     # Check if this is already an explicit barcode (backward compatibility)
     if component in KNOWN_BARCODES:
         return [component]
 
-    # Check if it's Flex-V2 format (contains hyphen like A-A01)
-    if "-" in component and component[0] in FLEX_V2_SETS:
+    # Check if it's Flex-V2 format (contains hyphen or underscore like A-A01 or A_A01)
+    if ("-" in component or "_" in component) and component[0] in FLEX_V2_SETS:
         return _parse_flex_v2_component(component)
 
     # Otherwise, use existing Flex-V1 logic
@@ -322,6 +346,15 @@ def _parse_barcodes(entry: dict, nlib: int) -> list[list[str]]:
     for combination in combinations:
         # Split into components by mode (BC+CR, etc.)
         components = combination.split("+")
+
+        # Special case for Flex-V2: if we have nlib > 1 but only 1 component,
+        # and that component is a Flex-V2 barcode, duplicate it for all libraries
+        # (Flex-V2 uses single naming scheme for multi-modal)
+        if len(components) == 1 and nlib > 1:
+            expanded = _expand_barcode_component(components[0])
+            if expanded and _is_flex_v2_barcode(expanded[0]):
+                # This is a Flex-V2 barcode - use same barcode for all modes
+                components = [components[0]] * nlib
 
         if len(components) != nlib:
             raise ValueError(

@@ -24,6 +24,13 @@ class TestFlexV2Detection:
         assert _is_flex_v2_barcode("B-C05")
         assert _is_flex_v2_barcode("D-H12")
 
+    def test_is_flex_v2_barcode_valid_underscore(self):
+        """Test detection of valid Flex-V2 barcodes with underscores."""
+        assert _is_flex_v2_barcode("A_A01")
+        assert _is_flex_v2_barcode("A_H12")
+        assert _is_flex_v2_barcode("B_C05")
+        assert _is_flex_v2_barcode("D_H12")
+
     def test_is_flex_v2_barcode_invalid_set(self):
         """Test rejection of invalid set prefixes."""
         assert not _is_flex_v2_barcode("E-A01")  # Invalid set
@@ -134,6 +141,11 @@ class TestFlexV2Parsing:
         """Test parsing of single barcode."""
         result = _parse_flex_v2_component("A-A01")
         assert result == ["A-A01"]
+
+    def test_parse_single_barcode_underscore(self):
+        """Test parsing of single barcode with underscore (normalized to hyphen)."""
+        result = _parse_flex_v2_component("A_A01")
+        assert result == ["A-A01"]  # Should normalize to hyphen
 
     def test_parse_range_same_row(self):
         """Test parsing range within same row."""
