@@ -461,18 +461,21 @@ def process_sample(
                 f"[{sample}] - No directories with '_Lane' suffix found, checking for single-lane format"
             )
             # Check for directories that match base prefixes exactly (without Lane suffix)
-            for base_prefix in base_prefixes:
-                # Remove the trailing "_Lane" from expected prefix
-                single_lane_prefix = base_prefix.replace("_Lane", "")
-                for root, _dirs, _files in os.walk(cyto_outdir, followlinks=True):
-                    basename = os.path.basename(root)
-                    if basename.startswith(
-                        single_lane_prefix
-                    ) and not lane_regex.search(basename):
-                        matched_directories.append((root, basename))
-                        logger.info(
-                            f"[{sample}] - Found single-lane directory (no _Lane suffix): {basename}. Treating as Lane 1."
-                        )
+            single_lane_prefixes = {p.replace("_Lane", "") for p in base_prefixes}
+            found_dirs = set()
+            for root, _dirs, _files in os.walk(cyto_outdir, followlinks=True):
+                basename = os.path.basename(root)
+                if not lane_regex.search(basename):
+                    for single_lane_prefix in single_lane_prefixes:
+                        if basename.startswith(single_lane_prefix):
+                            dir_tuple = (root, basename)
+                            if dir_tuple not in found_dirs:
+                                matched_directories.append(dir_tuple)
+                                found_dirs.add(dir_tuple)
+                                logger.info(
+                                    f"[{sample}] - Found single-lane directory (no _Lane suffix): {basename}. Treating as Lane 1."
+                                )
+                            break
 
         if len(matched_directories) == 0:
             logger.warning(
