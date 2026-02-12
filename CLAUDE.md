@@ -290,6 +290,20 @@ cyto_outdir/
         └── CR002.assignments.tsv
 ```
 
+**Note**: For single-lane runs, the `_Lane{N}` suffix is optional. Directories named `{experiment}_GEX` or `{experiment}_CRISPR` (without Lane suffix) will be treated as Lane 1. This makes simple runs more convenient:
+
+```
+cyto_outdir/
+├── {experiment}_GEX/        # Treated as Lane 1
+│   └── counts/
+│       ├── BC001.filt.h5ad
+│       └── BC002.filt.h5ad
+└── {experiment}_CRISPR/     # Treated as Lane 1
+    └── counts/
+        ├── CR001.h5ad
+        └── CR002.h5ad
+```
+
 ## Common Patterns
 
 ### Single-Modal GEX Experiment (Flex-V1)
