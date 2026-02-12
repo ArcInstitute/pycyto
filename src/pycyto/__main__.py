@@ -56,7 +56,9 @@ def convert(
     adata = convert_mtx_to_anndata(
         mtx_path, feature_path, barcode_path, dtype="int32" if integer else "float32"
     )
-    adata.write(output, compression="gzip" if compress else None)
+    adata.write(  # type: ignore[misc]
+        filename=output, compression="gzip" if compress else None
+    )
 
 
 @app.command()

@@ -57,13 +57,13 @@ def convert_mtx_to_anndata(
         feature_path, sep="\t", header=None, index_col=0
     ).index.astype(str)
     features.name = "feature"
-    adata.obs_names = features  # type: ignore
+    adata.obs_names = features
 
     barcodes = pd.read_csv(
         barcode_path, sep="\t", header=None, index_col=0
     ).index.astype(str)
     barcodes.name = "barcode"
-    adata.var_names = barcodes  # type: ignore
+    adata.var_names = barcodes
 
     # convert to cell x gene
     adata = adata.T
