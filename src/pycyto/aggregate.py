@@ -288,9 +288,11 @@ def _load_assignments_for_experiment_sample(
             f"{crispr_bc}.assignments.tsv",
         )
         if os.path.exists(expected_crispr_assignments_path):
+            multi_guide_cols = ["guide_ids_original", "umis", "fdr", "log_odds"]
             bc_assignments = pl.read_csv(
                 expected_crispr_assignments_path,
                 separator="\t",
+                schema_overrides={c: pl.String for c in multi_guide_cols},
             ).with_columns(
                 pl.lit(sample).cast(pl.Categorical).alias("sample"),
                 pl.lit(experiment).cast(pl.Categorical).alias("experiment"),
