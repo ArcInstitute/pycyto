@@ -194,16 +194,15 @@ def _process_gex_crispr_set(
     )
 
     logger.debug(f"[{sample}] - Creating merge tables...")
+    # Anchor on the GEX reads (one row per GEX cell) so that GEX-only cells
+    # (no CRISPR mate) still receive their intrinsic n_reads_gex / n_umis_gex
+    # values. CRISPR reads and the CRISPR assignments are then left-joined on;
+    # cells without a CRISPR mate get 0 read counts and null assignment fields.
     merged_data = (
-        assignments.select(["match_barcode", "assignment", "umis", "moi"])
-        .join(
-            (  # isolate GEX reads
-                reads_df.filter(pl.col("mode") == "gex")
-                .select(["match_barcode", "n_reads", "n_umis"])
-                .rename({"n_reads": "n_reads_gex", "n_umis": "n_umis_gex"})
-            ),
-            on="match_barcode",
-            how="left",
+        (  # anchor: GEX reads, one row per GEX cell
+            reads_df.filter(pl.col("mode") == "gex")
+            .select(["match_barcode", "n_reads", "n_umis"])
+            .rename({"n_reads": "n_reads_gex", "n_umis": "n_umis_gex"})
         )
         .join(
             (  # isolate CRISPR reads
@@ -214,13 +213,19 @@ def _process_gex_crispr_set(
             on="match_barcode",
             how="left",
         )
-        .fill_null(0)
+        .join(
+            assignments.select(["match_barcode", "assignment", "umis", "moi"]),
+            on="match_barcode",
+            how="left",
+        )
+        # Only fill the read-count columns; leave assignment/umis/moi null for
+        # GEX-only cells so they are not misreported as having a CRISPR call.
         .with_columns(
+            pl.col("n_reads_gex").fill_null(0).cast(pl.Int64),
+            pl.col("n_reads_crispr").fill_null(0).cast(pl.Int64),
+            pl.col("n_umis_gex").fill_null(0).cast(pl.Int64),
+            pl.col("n_umis_crispr").fill_null(0).cast(pl.Int64),
             pl.col("moi").cast(pl.Int64),
-            pl.col("n_reads_gex").cast(pl.Int64),
-            pl.col("n_reads_crispr").cast(pl.Int64),
-            pl.col("n_umis_gex").cast(pl.Int64),
-            pl.col("n_umis_crispr").cast(pl.Int64),
         )
         .to_pandas()  # Single conversion at the end
         .set_index("match_barcode")
