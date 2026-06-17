@@ -166,7 +166,7 @@ def test_gex_only_cell_keeps_gex_reads(tmp_path):
     obs = gex.obs
 
     assert MATCH_GEX_ONLY in obs.index, "GEX-only cell missing from obs"
-    row = obs.loc[MATCH_GEX_ONLY]
+    row = obs.loc[MATCH_GEX_ONLY]  # type: ignore  # obs is a pandas DataFrame at runtime
 
     # The core bug assertion: these must be the real values, never NaN.
     assert not np.isnan(float(row["n_reads_gex"])), (
@@ -182,7 +182,7 @@ def test_gex_only_cell_keeps_gex_reads(tmp_path):
 def test_both_modality_cell_unchanged(tmp_path):
     """Regression: a cell present in both modalities keeps all its values."""
     gex = _run(tmp_path)
-    row = gex.obs.loc[MATCH_BOTH]
+    row = gex.obs.loc[MATCH_BOTH]  # type: ignore  # obs is a pandas DataFrame at runtime
 
     assert int(row["n_reads_gex"]) == GEX_READS[MATCH_BOTH]["n_reads"]
     assert int(row["n_umis_gex"]) == GEX_READS[MATCH_BOTH]["n_umis"]
