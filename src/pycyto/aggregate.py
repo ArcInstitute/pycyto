@@ -12,6 +12,20 @@ import polars as pl
 # Set up logger for aggregation
 logger = logging.getLogger("pycyto.aggregate")
 
+# cyto's per-barcode ``<bc>.assignments.tsv`` stores one value per assigned guide
+# in these columns; for multi-guide (MOI>1) cells they are pipe-delimited (e.g.
+# ``guide_ids_original = "129|262"``, ``umis = "6|3"``). Read them as strings so
+# polars does not infer a numeric dtype from a single-guide row sample and then
+# fail to parse the pipe-delimited values -- and so the dtype is uniform across
+# every per-barcode file for the later ``pl.concat``.
+_ASSIGNMENT_PER_GUIDE_COLS = (
+    "assignment",
+    "guide_ids_original",
+    "umis",
+    "fdr",
+    "log_odds",
+)
+
 
 def _is_flex_v2_barcode(barcode: str) -> bool:
     """Check if barcode follows Flex-V2 format: A-A01, B-C05, D-H12, etc."""
@@ -296,6 +310,7 @@ def _load_assignments_for_experiment_sample(
             bc_assignments = pl.read_csv(
                 expected_crispr_assignments_path,
                 separator="\t",
+                schema_overrides={col: pl.String for col in _ASSIGNMENT_PER_GUIDE_COLS},
             ).with_columns(
                 pl.lit(sample).cast(pl.Categorical).alias("sample"),
                 pl.lit(experiment).cast(pl.Categorical).alias("experiment"),
