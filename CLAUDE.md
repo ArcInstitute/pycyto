@@ -193,12 +193,12 @@ experiment | sample | mode | bc_component | bc_idx | features | probe_set | feat
 1. Detect barcode format (Flex-V1 vs Flex-V2) from GEX data
 2. **For Flex-V1**:
    - Detect if CRISPR uses CR prefixes by checking assignment data
-   - If CR detected: cell barcodes like `ACGTACGT-CR001-1` are converted to `ACGTACGT-BC001-1`
+   - If CR detected: cell barcodes like `ACGTACGT-CR001-1-experiment_name` are converted to `ACGTACGT-BC001-1-experiment_name`
    - If BC detected: no conversion needed, barcodes already match
 3. **For Flex-V2**:
    - No conversion needed - single naming scheme per barcode set
    - Both GEX and CRISPR use the same barcode identifiers (e.g., `A-A01`)
-4. Matching is always done on `cell_barcode + flex_barcode + lane_id`
+4. Matching is always done on `cell_barcode + flex_barcode + lane_id + experiment`
 
 See `_process_gex_crispr_set()` around line 140-160 for the detection and conversion logic.
 

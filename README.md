@@ -378,7 +378,7 @@ The aggregated GEX h5ad includes:
 
 When pairing GEX and CRISPR data:
 - CRISPR barcodes (CR) are automatically converted to match GEX format (BC) for cell matching
-- Cells are matched on: `cell_barcode + flex_barcode + lane_id`
+- Cells are matched on: `cell_barcode + flex_barcode + lane_id + experiment`
 - Only cells present in filtered GEX data are retained in CRISPR output
 
 ### Cyto Output Directory Structure
