@@ -164,7 +164,9 @@ def _process_gex_crispr_set(
                 + "-"
                 + pl.col("experiment").cast(pl.String)
             )
-        ).with_columns(pl.col("match_barcode").str.replace("CR", "BC", n=1))
+        ).with_columns(
+            pl.col("match_barcode").str.replace(r"^([ACGTN]+)-CR(\d+)-", r"$1-BC$2-")
+        )
         reads_df = reads_df.with_columns(
             match_barcode=(
                 pl.col("cell_id")
@@ -173,7 +175,9 @@ def _process_gex_crispr_set(
                 + "-"
                 + pl.col("experiment").cast(pl.String)
             )
-        ).with_columns(pl.col("match_barcode").str.replace("CR", "BC", n=1))
+        ).with_columns(
+            pl.col("match_barcode").str.replace(r"^([ACGTN]+)-CR(\d+)-", r"$1-BC$2-")
+        )
         crispr_adata.obs.index = crispr_adata.obs.index.str.replace(
             r"^([ACGTN]+)-CR(\d+)-", r"\1-BC\2-", regex=True
         )
