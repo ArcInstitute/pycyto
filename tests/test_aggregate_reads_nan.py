@@ -25,24 +25,28 @@ from pycyto.aggregate import _process_gex_crispr_set
 #
 # ``match_barcode`` construction inside ``_process_gex_crispr_set`` (Flex-V1,
 # non-CR path):
-#   assignments.match_barcode = cell    + "-" + lane_id
-#   reads_df.match_barcode    = cell_id + "-" + lane_id   (cell_id already
-#                                                          built by the loader
-#                                                          as barcode + "-" + bc_idx)
-# The GEX adata obs index is built by the loader as <barcode> + "-" + lane_id.
-# To make all three align we use a barcode that already embeds bc_idx so the
+#   assignments.match_barcode = cell    + "-" + lane_id + "-" + experiment
+#   reads_df.match_barcode    = cell_id + "-" + lane_id + "-" + experiment
+#                                                          (cell_id already
+#                                                           built by the loader
+#                                                           as barcode + "-" + bc_idx)
+# The GEX adata obs index is built by the loader as
+#   <barcode> + "-" + lane_id + "-" + experiment.
+# To make all four align we use a barcode that already embeds bc_idx so the
 # adata index equals reads.match_barcode.
 # ---------------------------------------------------------------------------
 
 LANE_ID = "1"
 BC_IDX = "TestGEX_BC1"
+EXPERIMENT = "E1"
 
-# adata index == <obs barcode> + "-" + lane_id, must equal reads match_barcode.
+# adata index == <obs barcode> + "-" + lane_id + "-" + experiment, must equal
+# reads match_barcode.
 BARCODE_BOTH = "AAAACCCC-TestGEX_BC1"
 BARCODE_GEX_ONLY = "GGGGTTTT-TestGEX_BC1"
 
-MATCH_BOTH = f"{BARCODE_BOTH}-{LANE_ID}"
-MATCH_GEX_ONLY = f"{BARCODE_GEX_ONLY}-{LANE_ID}"
+MATCH_BOTH = f"{BARCODE_BOTH}-{LANE_ID}-{EXPERIMENT}"
+MATCH_GEX_ONLY = f"{BARCODE_GEX_ONLY}-{LANE_ID}-{EXPERIMENT}"
 
 # Known "real" GEX read values we expect to survive onto every GEX cell.
 GEX_READS = {
@@ -63,12 +67,19 @@ def _make_gex_adata() -> ad.AnnData:
         X=np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32),
     )
     adata.obs_names = obs_index
-    # index += "-" + lane_id, mimicking _load_gex_anndata_for_experiment_sample
+    # index += "-" + lane_id + "-" + experiment, mimicking
+    # _load_gex_anndata_for_experiment_sample.
     adata.obs["sample"] = "S1"
-    adata.obs["experiment"] = "E1"
+    adata.obs["experiment"] = EXPERIMENT
     adata.obs["lane_id"] = LANE_ID
     adata.obs["bc_idx"] = BC_IDX
-    adata.obs.index = adata.obs.index + "-" + adata.obs["lane_id"].astype(str)
+    adata.obs.index = (
+        adata.obs.index
+        + "-"
+        + adata.obs["lane_id"].astype(str)
+        + "-"
+        + adata.obs["experiment"].astype(str)
+    )
     return adata
 
 
@@ -77,16 +88,23 @@ def _make_crispr_adata() -> ad.AnnData:
     adata = ad.AnnData(X=np.array([[5.0]], dtype=np.float32))
     adata.obs_names = [BARCODE_BOTH]
     adata.obs["sample"] = "S1"
-    adata.obs["experiment"] = "E1"
+    adata.obs["experiment"] = EXPERIMENT
     adata.obs["lane_id"] = LANE_ID
     adata.obs["bc_idx"] = BC_IDX
-    adata.obs.index = adata.obs.index + "-" + adata.obs["lane_id"].astype(str)
+    adata.obs.index = (
+        adata.obs.index
+        + "-"
+        + adata.obs["lane_id"].astype(str)
+        + "-"
+        + adata.obs["experiment"].astype(str)
+    )
     return adata
 
 
 def _make_assignments() -> pl.DataFrame:
     """Assignments table (CRISPR modality) -- only the 'both' cell."""
-    # `cell` + "-" + lane_id == match_barcode == BARCODE_BOTH + "-" + lane_id
+    # `cell` + "-" + lane_id + "-" + experiment == match_barcode
+    #                                           == BARCODE_BOTH + "-" + lane_id + "-" + experiment
     return pl.DataFrame(
         {
             "cell": [BARCODE_BOTH],
@@ -94,7 +112,7 @@ def _make_assignments() -> pl.DataFrame:
             "umis": [ASSIGN_BOTH["umis"]],
             "moi": [ASSIGN_BOTH["moi"]],
             "sample": ["S1"],
-            "experiment": ["E1"],
+            "experiment": [EXPERIMENT],
             "lane_id": [LANE_ID],
             "bc_idx": [BC_IDX],
         }
@@ -106,13 +124,14 @@ def _make_reads() -> pl.DataFrame:
 
     ``cell_id`` is the loader-built ``barcode + "-" + bc_idx`` -- but our
     barcodes already embed the bc_idx, so cell_id is just the barcode here;
-    ``match_barcode`` then becomes cell_id + "-" + lane_id, matching the adata
-    index and the assignments match_barcode.
+    ``match_barcode`` then becomes cell_id + "-" + lane_id + "-" + experiment,
+    matching the adata index and the assignments match_barcode.
     """
     rows = []
     # gex reads: one per GEX cell (the bug source for the gex-only cell).
     for match, vals in GEX_READS.items():
-        cell_id = match.rsplit("-", 1)[0]  # strip lane suffix back to cell_id
+        # strip the trailing "-lane-experiment" back to cell_id.
+        cell_id = match.rsplit("-", 2)[0]
         rows.append(
             {
                 "barcode": cell_id,
@@ -121,13 +140,13 @@ def _make_reads() -> pl.DataFrame:
                 "n_umis": vals["n_umis"],
                 "bc_idx": BC_IDX,
                 "lane_id": LANE_ID,
-                "experiment": "E1",
+                "experiment": EXPERIMENT,
                 "sample": "S1",
                 "mode": "gex",
             }
         )
     for match, vals in CRISPR_READS.items():
-        cell_id = match.rsplit("-", 1)[0]
+        cell_id = match.rsplit("-", 2)[0]
         rows.append(
             {
                 "barcode": cell_id,
@@ -136,7 +155,7 @@ def _make_reads() -> pl.DataFrame:
                 "n_umis": vals["n_umis"],
                 "bc_idx": BC_IDX,
                 "lane_id": LANE_ID,
-                "experiment": "E1",
+                "experiment": EXPERIMENT,
                 "sample": "S1",
                 "mode": "crispr",
             }

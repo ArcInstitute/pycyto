@@ -97,10 +97,10 @@ def _filter_crispr_adata_to_gex_barcodes(
     Creates a dummy column on each that captures all unique information.
 
     # already annotated
-    index: (cell_barcode + flex_barcode + lane_id)
+    index: (cell_barcode + flex_barcode + lane_id + experiment)
 
     # to create
-    dummy = index + sample + experiment
+    dummy = index + sample + experiment  (sample appended defensively; experiment is already in index post-fix)
     """
     gex_adata.obs["dummy"] = (
         gex_adata.obs.index
@@ -171,12 +171,30 @@ def _process_gex_crispr_set(
             f"[{sample}] - Detected Flex-V1 CR barcodes, converting to BC format for matching"
         )
         assignments = assignments.with_columns(
-            match_barcode=pl.col("cell") + "-" + pl.col("lane_id").cast(pl.String)
-        ).with_columns(pl.col("match_barcode").str.replace("CR", "BC"))
+            match_barcode=(
+                pl.col("cell")
+                + "-"
+                + pl.col("lane_id").cast(pl.String)
+                + "-"
+                + pl.col("experiment").cast(pl.String)
+            )
+        ).with_columns(
+            pl.col("match_barcode").str.replace(r"^([ACGTN]+)-CR(\d+)-", r"$1-BC$2-")
+        )
         reads_df = reads_df.with_columns(
-            match_barcode=pl.col("cell_id") + "-" + pl.col("lane_id").cast(pl.String)
-        ).with_columns(pl.col("match_barcode").str.replace("CR", "BC"))
-        crispr_adata.obs.index = crispr_adata.obs.index.str.replace("CR", "BC")
+            match_barcode=(
+                pl.col("cell_id")
+                + "-"
+                + pl.col("lane_id").cast(pl.String)
+                + "-"
+                + pl.col("experiment").cast(pl.String)
+            )
+        ).with_columns(
+            pl.col("match_barcode").str.replace(r"^([ACGTN]+)-CR(\d+)-", r"$1-BC$2-")
+        )
+        crispr_adata.obs.index = crispr_adata.obs.index.str.replace(
+            r"^([ACGTN]+)-CR(\d+)-", r"\1-BC\2-", regex=True
+        )
     else:
         if is_flex_v2:
             logger.debug(
@@ -187,10 +205,22 @@ def _process_gex_crispr_set(
                 f"[{sample}] - Using standard Flex-V1 barcode format for matching"
             )
         assignments = assignments.with_columns(
-            match_barcode=pl.col("cell") + "-" + pl.col("lane_id").cast(pl.String)
+            match_barcode=(
+                pl.col("cell")
+                + "-"
+                + pl.col("lane_id").cast(pl.String)
+                + "-"
+                + pl.col("experiment").cast(pl.String)
+            )
         )
         reads_df = reads_df.with_columns(
-            match_barcode=pl.col("cell_id") + "-" + pl.col("lane_id").cast(pl.String)
+            match_barcode=(
+                pl.col("cell_id")
+                + "-"
+                + pl.col("lane_id").cast(pl.String)
+                + "-"
+                + pl.col("experiment").cast(pl.String)
+            )
         )
 
     logger.info(f"[{sample}] - Writing assignments data...")
@@ -344,7 +374,7 @@ def _load_gex_anndata_for_experiment_sample(
             bc_adata.obs["experiment"] = experiment
             bc_adata.obs["lane_id"] = lane_id
             bc_adata.obs["bc_idx"] = gex_bc
-            bc_adata.obs.index = bc_adata.obs.index + f"-{lane_id}"
+            bc_adata.obs.index = bc_adata.obs.index + f"-{lane_id}-{experiment}"
             gex_adata_list.append(bc_adata)
         else:
             logger.warning(
@@ -372,7 +402,7 @@ def _load_crispr_anndata_for_experiment_sample(
             bc_adata.obs["experiment"] = experiment
             bc_adata.obs["lane_id"] = lane_id
             bc_adata.obs["bc_idx"] = crispr_bc
-            bc_adata.obs.index = bc_adata.obs.index + f"-{lane_id}"
+            bc_adata.obs.index = bc_adata.obs.index + f"-{lane_id}-{experiment}"
             crispr_adata_list.append(bc_adata)
         else:
             logger.warning(

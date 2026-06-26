@@ -36,6 +36,21 @@ Tests the configuration parsing system, especially the lane removal refactoring 
 - `TestModeAndFeatureParsing`: Mode and feature string parsing
 - `TestConfigParsingIntegration`: End-to-end config parsing scenarios
 
+### `test_aggregate.py`
+Tests the multi-modal aggregation pipeline in `aggregate.py`, including the cross-experiment same-sample disambiguation introduced for issue #46.
+
+**Key Features Tested:**
+- **Cross-experiment same-sample**: Verifies that the same `sample` under multiple `experiment` values no longer collides during the `match_barcode` merge.
+- **CR→BC conversion**: Confirms the pandas anchored regex correctly rewrites the flex-barcode prefix without corrupting experiment names that happen to contain "CR".
+- **Single-modal universality**: The experiment suffix lands in `obs.index` for `gex`-only and `crispr`-only outputs too, preventing silent `obs_names_make_unique` deduplication.
+
+**Test Classes:**
+- `TestMultiExperimentSameSample`: Three tests covering crash absence, cell count, and per-experiment attribution (gex+crispr mode).
+- `TestSingleExperimentRegression`: Asserts the single-experiment path still produces correct annotations and obs.index format.
+- `TestGEXOnlyMultiExperiment`: Locks in the universal-loader-fix invariant for single-modal GEX outputs.
+- `TestCRISPROnlyMultiExperiment`: Symmetric coverage for the CRISPR-only single-modal path.
+- `TestCREdgeCases`: Positive CR→BC conversion, experiment-name-contains-CR safety, BC-prefix CRISPR pathway.
+
 ## Running Tests
 
 ### Run All Tests
