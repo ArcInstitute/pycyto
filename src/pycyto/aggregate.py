@@ -12,6 +12,20 @@ import polars as pl
 # Set up logger for aggregation
 logger = logging.getLogger("pycyto.aggregate")
 
+# cyto's per-barcode ``<bc>.assignments.tsv`` stores one value per assigned guide
+# in these columns; for multi-guide (MOI>1) cells they are pipe-delimited (e.g.
+# ``guide_ids_original = "129|262"``, ``umis = "6|3"``). Read them as strings so
+# polars does not infer a numeric dtype from a single-guide row sample and then
+# fail to parse the pipe-delimited values -- and so the dtype is uniform across
+# every per-barcode file for the later ``pl.concat``.
+_ASSIGNMENT_PER_GUIDE_COLS = (
+    "assignment",
+    "guide_ids_original",
+    "umis",
+    "fdr",
+    "log_odds",
+)
+
 
 def _is_flex_v2_barcode(barcode: str) -> bool:
     """Check if barcode follows Flex-V2 format: A-A01, B-C05, D-H12, etc."""
@@ -224,16 +238,15 @@ def _process_gex_crispr_set(
     )
 
     logger.debug(f"[{sample}] - Creating merge tables...")
+    # Anchor on the GEX reads (one row per GEX cell) so that GEX-only cells
+    # (no CRISPR mate) still receive their intrinsic n_reads_gex / n_umis_gex
+    # values. CRISPR reads and the CRISPR assignments are then left-joined on;
+    # cells without a CRISPR mate get 0 read counts and null assignment fields.
     merged_data = (
-        assignments.select(["match_barcode", "assignment", "umis", "moi"])
-        .join(
-            (  # isolate GEX reads
-                reads_df.filter(pl.col("mode") == "gex")
-                .select(["match_barcode", "n_reads", "n_umis"])
-                .rename({"n_reads": "n_reads_gex", "n_umis": "n_umis_gex"})
-            ),
-            on="match_barcode",
-            how="left",
+        (  # anchor: GEX reads, one row per GEX cell
+            reads_df.filter(pl.col("mode") == "gex")
+            .select(["match_barcode", "n_reads", "n_umis"])
+            .rename({"n_reads": "n_reads_gex", "n_umis": "n_umis_gex"})
         )
         .join(
             (  # isolate CRISPR reads
@@ -244,13 +257,19 @@ def _process_gex_crispr_set(
             on="match_barcode",
             how="left",
         )
-        .fill_null(0)
+        .join(
+            assignments.select(["match_barcode", "assignment", "umis", "moi"]),
+            on="match_barcode",
+            how="left",
+        )
+        # Only fill the read-count columns; leave assignment/umis/moi null for
+        # GEX-only cells so they are not misreported as having a CRISPR call.
         .with_columns(
+            pl.col("n_reads_gex").fill_null(0).cast(pl.Int64),
+            pl.col("n_reads_crispr").fill_null(0).cast(pl.Int64),
+            pl.col("n_umis_gex").fill_null(0).cast(pl.Int64),
+            pl.col("n_umis_crispr").fill_null(0).cast(pl.Int64),
             pl.col("moi").cast(pl.Int64),
-            pl.col("n_reads_gex").cast(pl.Int64),
-            pl.col("n_reads_crispr").cast(pl.Int64),
-            pl.col("n_umis_gex").cast(pl.Int64),
-            pl.col("n_umis_crispr").cast(pl.Int64),
         )
         .to_pandas()  # Single conversion at the end
         .set_index("match_barcode")
@@ -321,6 +340,7 @@ def _load_assignments_for_experiment_sample(
             bc_assignments = pl.read_csv(
                 expected_crispr_assignments_path,
                 separator="\t",
+                schema_overrides={col: pl.String for col in _ASSIGNMENT_PER_GUIDE_COLS},
             ).with_columns(
                 pl.lit(sample).cast(pl.Categorical).alias("sample"),
                 pl.lit(experiment).cast(pl.Categorical).alias("experiment"),
