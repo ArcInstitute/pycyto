@@ -49,7 +49,7 @@ def _write_h5ad(
 ) -> None:
     adata.obs_names_make_unique()  # always make unique
     output_path: str = os.path.join(sample_outdir, f"{sample}_{mode}.h5ad")
-    adata.write_h5ad(  # type: ignore[misc]
+    adata.write_h5ad(  # type: ignore
         filename=output_path,
         compression="gzip" if compress else None,
     )
@@ -116,7 +116,7 @@ def _filter_crispr_adata_to_gex_barcodes(
         + "-"
         + crispr_adata.obs["experiment"]
     )
-    mask = crispr_adata.obs["dummy"].isin(gex_adata.obs["dummy"])  # type: ignore
+    mask = crispr_adata.obs["dummy"].isin(gex_adata.obs["dummy"])  # pyright: ignore[reportArgumentType]
     gex_adata.obs.drop(columns=["dummy"], inplace=True)  # type: ignore
     crispr_adata.obs.drop(columns=["dummy"], inplace=True)  # type: ignore
     return crispr_adata[mask]
@@ -344,7 +344,7 @@ def _load_gex_anndata_for_experiment_sample(
             bc_adata.obs["experiment"] = experiment
             bc_adata.obs["lane_id"] = lane_id
             bc_adata.obs["bc_idx"] = gex_bc
-            bc_adata.obs.index += "-" + bc_adata.obs["lane_id"].astype(str)  # type: ignore
+            bc_adata.obs.index = bc_adata.obs.index + f"-{lane_id}"
             gex_adata_list.append(bc_adata)
         else:
             logger.warning(
@@ -372,7 +372,7 @@ def _load_crispr_anndata_for_experiment_sample(
             bc_adata.obs["experiment"] = experiment
             bc_adata.obs["lane_id"] = lane_id
             bc_adata.obs["bc_idx"] = crispr_bc
-            bc_adata.obs.index += "-" + bc_adata.obs["lane_id"].astype(str)  # type: ignore
+            bc_adata.obs.index = bc_adata.obs.index + f"-{lane_id}"
             crispr_adata_list.append(bc_adata)
         else:
             logger.warning(
