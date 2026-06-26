@@ -324,7 +324,7 @@ def _load_gex_anndata_for_experiment_sample(
             bc_adata.obs["experiment"] = experiment
             bc_adata.obs["lane_id"] = lane_id
             bc_adata.obs["bc_idx"] = gex_bc
-            bc_adata.obs.index += "-" + bc_adata.obs["lane_id"].astype(str)
+            bc_adata.obs.index = bc_adata.obs.index + f"-{lane_id}"
             gex_adata_list.append(bc_adata)
         else:
             logger.warning(
@@ -352,7 +352,7 @@ def _load_crispr_anndata_for_experiment_sample(
             bc_adata.obs["experiment"] = experiment
             bc_adata.obs["lane_id"] = lane_id
             bc_adata.obs["bc_idx"] = crispr_bc
-            bc_adata.obs.index += "-" + bc_adata.obs["lane_id"].astype(str)
+            bc_adata.obs.index = bc_adata.obs.index + f"-{lane_id}"
             crispr_adata_list.append(bc_adata)
         else:
             logger.warning(
