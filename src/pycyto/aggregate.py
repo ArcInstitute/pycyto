@@ -9,6 +9,8 @@ import anndata.experimental as ade
 import pandas as pd
 import polars as pl
 
+from .config import _is_flex_v2_barcode
+
 # Set up logger for aggregation
 logger = logging.getLogger("pycyto.aggregate")
 
@@ -27,9 +29,22 @@ _ASSIGNMENT_PER_GUIDE_COLS = (
 )
 
 
-def _is_flex_v2_barcode(barcode: str) -> bool:
-    """Check if barcode follows Flex-V2 format: A-A01, B-C05, D-H12, etc."""
-    return re.match(r"^[ABCD]-[ABCDEFGH](0[1-9]|1[0-2])$", barcode) is not None
+def _get_gex_sample_barcode(gex_adata: ad.AnnData) -> str:
+    """Return a representative source flex barcode for the GEX cells.
+
+    Reads the per-cell ``bc_idx`` obs column (populated by the GEX loader with
+    the raw flex barcode, e.g. ``BC001`` or ``A-A01``). This is robust to the
+    Flex-V2 barcode form ``A-A01``, which itself contains the ``-`` separator
+    used between obs.index fields -- re-parsing the index by position would
+    split ``A-A01`` and misidentify the format (issue #49).
+
+    Returns ``""`` when ``gex_adata`` has no cells (e.g. all constituent
+    per-barcode AnnData objects loaded zero cells); ``_is_flex_v2_barcode("")``
+    is ``False``, a safe no-op since there are then no cells to convert.
+    """
+    if len(gex_adata.obs) == 0:
+        return ""
+    return str(gex_adata.obs["bc_idx"].iloc[0])
 
 
 def lazy_load_adata(path: str) -> ad.AnnData:
@@ -159,11 +174,7 @@ def _process_gex_crispr_set(
 
     # Check if we need to convert CR→BC for Flex-V1
     # Flex-V2 uses a single naming scheme, so no conversion needed
-    sample_barcode = (
-        str(gex_adata.obs.index[0]).split("-")[1]
-        if len(gex_adata.obs.index) > 0
-        else ""
-    )
+    sample_barcode = _get_gex_sample_barcode(gex_adata)
     is_flex_v2 = _is_flex_v2_barcode(sample_barcode)
 
     if not is_flex_v2 and assignments["cell"].str.contains("CR").any():
