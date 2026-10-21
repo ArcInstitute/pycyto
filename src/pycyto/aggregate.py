@@ -482,7 +482,10 @@ def process_sample(
         # determine data regex (support both _Lane and no-Lane formats)
         crispr_regex = re.compile(r".+_CRISPR(_Lane.+)?$")
         gex_regex = re.compile(r".+_GEX(_Lane.+)?$")
-        lane_regex = re.compile(r"_Lane(\d+)")
+        # Lane ids are any alphanumeric token after `_Lane` (`Lane1`, `LaneA1`, `LaneV1L1`).
+        # Digits-only (or letter+digits) parsing collapsed e.g. LaneV1L1/LaneV1L2 to one lane,
+        # which duplicated match_barcode across lanes and blew up the GEX obs merge.
+        lane_regex = re.compile(r"_Lane([A-Za-z0-9]+)")
 
         gex_bcs = (
             subset.filter(pl.col("mode") == "gex")
